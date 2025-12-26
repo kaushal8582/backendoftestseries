@@ -61,9 +61,73 @@ const validateLogin = [
   validate,
 ];
 
+/**
+ * Verify email validation rules
+ */
+const validateVerifyEmail = [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Please provide a valid email'),
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits')
+    .isNumeric()
+    .withMessage('OTP must be numeric'),
+  validate,
+];
+
+/**
+ * Forgot password validation rules
+ */
+const validateForgotPassword = [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Please provide a valid email'),
+  validate,
+];
+
+/**
+ * Reset password validation rules
+ */
+const validateResetPassword = [
+  body('email')
+    .trim()
+    .notEmpty()
+    .withMessage('Email is required')
+    .isEmail()
+    .withMessage('Please provide a valid email'),
+  body('otp')
+    .trim()
+    .notEmpty()
+    .withMessage('OTP is required')
+    .isLength({ min: 6, max: 6 })
+    .withMessage('OTP must be 6 digits')
+    .isNumeric()
+    .withMessage('OTP must be numeric'),
+  body('newPassword')
+    .trim()
+    .notEmpty()
+    .withMessage('New password is required')
+    .isLength({ min: 6 })
+    .withMessage('Password must be at least 6 characters'),
+  validate,
+];
+
 module.exports = {
   validateRegister,
   validateLogin,
+  validateVerifyEmail,
+  validateForgotPassword,
+  validateResetPassword,
   validate,
 };
 

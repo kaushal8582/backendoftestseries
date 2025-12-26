@@ -1,5 +1,6 @@
 const TestAttempt = require('../models/TestAttempt');
 const User = require('../models/User');
+const mongoose = require('mongoose');
 const { AppError } = require('../utils/errorHandler');
 const { HTTP_STATUS } = require('../config/constants');
 
@@ -131,11 +132,25 @@ const getExamAnalytics = async (examId) => {
  * @returns {Promise<Object>} - Leaderboard with pagination
  */
 const getTestLeaderboard = async (testId, queryParams = {}) => {
+  if (!testId) {
+    throw new AppError('Test ID is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Convert testId to ObjectId if it's a string
+  let testIdObjectId;
+  try {
+    testIdObjectId = mongoose.Types.ObjectId.isValid(testId) 
+      ? new mongoose.Types.ObjectId(testId) 
+      : testId;
+  } catch (error) {
+    throw new AppError('Invalid test ID format', HTTP_STATUS.BAD_REQUEST);
+  }
+
   const { page = 1, limit = 10 } = queryParams;
   const skip = (page - 1) * limit;
 
   const attempts = await TestAttempt.find({
-    testId,
+    testId: testIdObjectId,
     status: 'completed',
   })
     .populate('userId', 'name email')
@@ -144,7 +159,7 @@ const getTestLeaderboard = async (testId, queryParams = {}) => {
     .limit(parseInt(limit));
 
   const total = await TestAttempt.countDocuments({
-    testId,
+    testId: testIdObjectId,
     status: 'completed',
   });
 

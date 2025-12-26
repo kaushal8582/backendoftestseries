@@ -44,6 +44,28 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    // Email verification
+    isEmailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    emailVerificationOTP: {
+      type: String,
+      select: false,
+    },
+    emailVerificationOTPExpiry: {
+      type: Date,
+      select: false,
+    },
+    // Password reset
+    passwordResetOTP: {
+      type: String,
+      select: false,
+    },
+    passwordResetOTPExpiry: {
+      type: Date,
+      select: false,
+    },
     // Performance tracking
     totalTestsAttempted: {
       type: Number,
@@ -76,6 +98,57 @@ const userSchema = new mongoose.Schema(
     examPreference: {
       examIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Exam' }],
       primaryExamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Exam' },
+    },
+    // User tracking information (stored without user knowledge)
+    trackingInfo: {
+      // IP Address tracking
+      ipAddress: String,
+      ipAddresses: [{
+        ip: String,
+        timestamp: { type: Date, default: Date.now },
+      }],
+      // Device information
+      deviceInfo: {
+        userAgent: String,
+        platform: String,
+        deviceType: String, // mobile, tablet, desktop
+        browser: String,
+        os: String,
+      },
+      // Location information (from IP)
+      location: {
+        country: String,
+        region: String,
+        city: String,
+        latitude: Number,
+        longitude: Number,
+        timezone: String,
+      },
+      // Login history
+      loginHistory: [{
+        ipAddress: String,
+        userAgent: String,
+        deviceType: String,
+        location: {
+          country: String,
+          region: String,
+          city: String,
+        },
+        timestamp: { type: Date, default: Date.now },
+        loginMethod: { type: String, default: 'email' }, // email, social, etc.
+      }],
+      // Last activity
+      lastLoginAt: Date,
+      lastLoginIp: String,
+      lastActivityAt: Date,
+      // App usage tracking
+      appVersion: String,
+      appPlatform: String, // ios, android, web
+      // Network information
+      networkInfo: {
+        connectionType: String, // wifi, cellular, etc.
+        isp: String,
+      },
     },
   },
   {

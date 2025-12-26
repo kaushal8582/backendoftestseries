@@ -1,5 +1,7 @@
 const categoryService = require('../services/categoryService');
 const { HTTP_STATUS } = require('../config/constants');
+const { uploadOnCloudinary } = require('../utils/cloudinary');
+const path = require('path');
 
 /**
  * @route   POST /api/categories
@@ -8,8 +10,21 @@ const { HTTP_STATUS } = require('../config/constants');
  */
 const createCategory = async (req, res, next) => {
   try {
+    let iconUrl = req.body.icon; // If icon URL is provided directly
+
+    // If file is uploaded, upload to Cloudinary
+    if (req.file) {
+      const localFilePath = req.file.path;
+      const cloudinaryResponse = await uploadOnCloudinary(localFilePath);
+      
+      if (cloudinaryResponse && cloudinaryResponse.secure_url) {
+        iconUrl = cloudinaryResponse.secure_url;
+      }
+    }
+
     const categoryData = {
       ...req.body,
+      icon: iconUrl || req.body.icon,
       createdBy: req.user._id,
     };
     const category = await categoryService.createCategory(categoryData);
@@ -73,7 +88,24 @@ const getCategoryById = async (req, res, next) => {
  */
 const updateCategory = async (req, res, next) => {
   try {
-    const category = await categoryService.updateCategory(req.params.id, req.body);
+    let iconUrl = req.body.icon; // If icon URL is provided directly
+
+    // If file is uploaded, upload to Cloudinary
+    if (req.file) {
+      const localFilePath = req.file.path;
+      const cloudinaryResponse = await uploadOnCloudinary(localFilePath);
+      
+      if (cloudinaryResponse && cloudinaryResponse.secure_url) {
+        iconUrl = cloudinaryResponse.secure_url;
+      }
+    }
+
+    const updateData = {
+      ...req.body,
+      icon: iconUrl !== undefined ? iconUrl : req.body.icon,
+    };
+
+    const category = await categoryService.updateCategory(req.params.id, updateData);
 
     res.status(HTTP_STATUS.OK).json({
       success: true,

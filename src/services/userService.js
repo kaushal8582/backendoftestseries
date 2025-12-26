@@ -186,11 +186,138 @@ const getUserStudyStreak = async (userId) => {
   };
 };
 
+/**
+ * Get all users (Admin only)
+ * @param {Object} queryParams - Query parameters (page, limit, search, role, isActive)
+ * @returns {Promise<Object>} - Users with pagination
+ */
+const getAllUsers = async (queryParams = {}) => {
+  const { page = 1, limit = 20, search, role, isActive } = queryParams;
+  const skip = (page - 1) * limit;
+
+  const query = {};
+
+  // Search by name or email
+  if (search) {
+    query.$or = [
+      { name: { $regex: search, $options: 'i' } },
+      { email: { $regex: search, $options: 'i' } },
+    ];
+  }
+
+  // Filter by role
+  if (role) {
+    query.role = role;
+  }
+
+  // Filter by active status
+  if (isActive !== undefined) {
+    query.isActive = isActive === 'true' || isActive === true;
+  }
+
+  const users = await User.find(query)
+    .select('-password')
+    .sort({ createdAt: -1 })
+    .skip(skip)
+    .limit(parseInt(limit));
+
+  const total = await User.countDocuments(query);
+
+  return {
+    users,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  };
+};
+
+/**
+ * Get user by ID (Admin only)
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} - User with all tracking info
+ */
+const getUserById = async (userId) => {
+  const user = await User.findById(userId).select('-password');
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return user;
+};
+
+/**
+ * Update user role (Admin only)
+ * @param {string} userId - User ID
+ * @param {string} role - New role
+ * @returns {Promise<Object>} - Updated user
+ */
+const updateUserRole = async (userId, role) => {
+  const { USER_ROLES } = require('../config/constants');
+  
+  if (!Object.values(USER_ROLES).includes(role)) {
+    throw new AppError('Invalid role', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { role },
+    { new: true, runValidators: true }
+  ).select('-password');
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return user;
+};
+
+/**
+ * Update user active status (Admin only)
+ * @param {string} userId - User ID
+ * @param {boolean} isActive - Active status
+ * @returns {Promise<Object>} - Updated user
+ */
+const updateUserStatus = async (userId, isActive) => {
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { isActive },
+    { new: true, runValidators: true }
+  ).select('-password');
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  return user;
+};
+
+/**
+ * Delete user (Admin only)
+ * @param {string} userId - User ID
+ * @returns {Promise<void>}
+ */
+const deleteUser = async (userId) => {
+  const user = await User.findByIdAndDelete(userId);
+
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+  }
+};
+
 module.exports = {
   getUserProfile,
   updateProfile,
   getUserTestAttempts,
   getUserPerformanceSummary,
   getUserStudyStreak,
+  getAllUsers,
+  getUserById,
+  updateUserRole,
+  updateUserStatus,
+  deleteUser,
 };
 

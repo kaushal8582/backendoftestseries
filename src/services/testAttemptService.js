@@ -387,10 +387,16 @@ const getTestAttemptDetails = async (attemptId, userId) => {
     };
   });
 
+  // Extract testId as string (handle both populated and non-populated cases)
+  const testIdString = testAttempt.testId?._id 
+    ? testAttempt.testId._id.toString() 
+    : testAttempt.testId?.toString() || testAttempt.testId;
+
   return {
     attempt: {
       _id: testAttempt._id,
-      testId: testAttempt.testId,
+      testId: testIdString, // Return as string ID for API compatibility
+      test: testAttempt.testId, // Also include populated test object if needed
       examId: testAttempt.examId,
       status: testAttempt.status,
       startedAt: testAttempt.startedAt,
