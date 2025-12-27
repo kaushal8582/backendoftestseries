@@ -42,13 +42,19 @@ const createTest = async (testData) => {
  * @returns {Promise<Object>} - Tests with pagination
  */
 const getTests = async (examId, queryParams = {}) => {
-  const { page = 1, limit = 10 } = queryParams;
+  const { page = 1, limit = 10, tabId } = queryParams;
   const skip = (page - 1) * limit;
 
   const query = { examId, isActive: true };
+  
+  // Filter by tabId if provided
+  if (tabId) {
+    query.tabId = tabId;
+  }
 
   const tests = await Test.find(query)
     .populate('examId', 'title category')
+    .populate('tabId', 'name')
     .sort({ order: 1 })
     .skip(skip)
     .limit(parseInt(limit));

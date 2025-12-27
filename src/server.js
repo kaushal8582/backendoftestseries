@@ -2,9 +2,13 @@ require('dotenv').config();
 const app = require('./app');
 const connectDB = require('./config/database');
 const { startHealthCheckCron } = require('./utils/cronJob');
+const { initializeFirebase } = require('./utils/fcm');
 
 // Connect to database
 connectDB();
+
+// Initialize Firebase Admin SDK for FCM
+initializeFirebase();
 
 // Start server
 const PORT = process.env.PORT || 3000;

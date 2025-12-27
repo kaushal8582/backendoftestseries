@@ -16,6 +16,10 @@ const validateCreateTest = [
     .withMessage('Exam ID is required')
     .isMongoId()
     .withMessage('Invalid exam ID'),
+  body('tabId')
+    .optional()
+    .isMongoId()
+    .withMessage('Invalid tab ID'),
   body('totalQuestions')
     .notEmpty()
     .withMessage('Total questions is required')

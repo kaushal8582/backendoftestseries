@@ -99,6 +99,28 @@ const userSchema = new mongoose.Schema(
       examIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Exam' }],
       primaryExamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Exam' },
     },
+    // Referral system
+    referralCode: {
+      type: String,
+      unique: true,
+      sparse: true,
+      uppercase: true,
+      trim: true,
+      default: null,
+    },
+    referredBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    referralCodeUsed: {
+      type: String,
+      default: null,
+    },
+    totalReferrals: {
+      type: Number,
+      default: 0,
+    },
     // User tracking information (stored without user knowledge)
     trackingInfo: {
       // IP Address tracking

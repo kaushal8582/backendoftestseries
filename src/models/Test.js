@@ -13,6 +13,11 @@ const testSchema = new mongoose.Schema(
       ref: 'Exam',
       required: [true, 'Please provide exam ID'],
     },
+    tabId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tab',
+      default: null,
+    },
     totalQuestions: {
       type: Number,
       required: [true, 'Please provide total questions'],
@@ -59,6 +64,8 @@ const testSchema = new mongoose.Schema(
 // Indexes
 testSchema.index({ examId: 1, order: 1 });
 testSchema.index({ examId: 1, isActive: 1 });
+testSchema.index({ tabId: 1, isActive: 1 });
+testSchema.index({ examId: 1, tabId: 1 });
 testSchema.index({ isFree: 1 });
 
 // Compound index for unique test order within exam

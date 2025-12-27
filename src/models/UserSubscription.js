@@ -31,11 +31,49 @@ const userSubscriptionSchema = new mongoose.Schema(
       type: Date,
       required: true,
     },
-    // For future: payment integration fields
-    // transactionId: String,
-    // paymentMethod: String,
-    // amountPaid: Number,
-    // paymentStatus: String,
+    // Trial period
+    isTrial: {
+      type: Boolean,
+      default: false,
+    },
+    trialStartDate: {
+      type: Date,
+      default: null,
+    },
+    trialEndDate: {
+      type: Date,
+      default: null,
+    },
+    // Payment details
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Payment',
+      default: null,
+    },
+    amountPaid: {
+      type: Number,
+      default: 0,
+    },
+    // Promo code used
+    promoCodeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'PromoCode',
+      default: null,
+    },
+    // Referral code used
+    referralCode: {
+      type: String,
+      default: null,
+    },
+    // Cancellation
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+    cancellationReason: {
+      type: String,
+      default: null,
+    },
   },
   {
     timestamps: true,

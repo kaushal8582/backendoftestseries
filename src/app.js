@@ -10,10 +10,16 @@ const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const examRoutes = require('./routes/examRoutes');
 const testRoutes = require('./routes/testRoutes');
+const tabRoutes = require('./routes/tabRoutes');
 const questionRoutes = require('./routes/questionRoutes');
 const testAttemptRoutes = require('./routes/testAttemptRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const categoryRoutes = require('./routes/categoryRoutes');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const promoCodeRoutes = require('./routes/promoCodeRoutes');
+const referralRoutes = require('./routes/referralRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 
 // Initialize Express app
 const app = express();
@@ -54,10 +60,16 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/exams', examRoutes);
 app.use('/api/tests', testRoutes);
+app.use('/api/tabs', tabRoutes);
 app.use('/api/questions', questionRoutes);
 app.use('/api/test-attempts', testAttemptRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/categories', categoryRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/promo-codes', promoCodeRoutes);
+app.use('/api/referrals', referralRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // 404 handler
 app.use((req, res, next) => {
