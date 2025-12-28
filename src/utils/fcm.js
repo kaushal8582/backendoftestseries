@@ -276,11 +276,22 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
     const totalSuccessCount = fcmResponse.successCount + expoResponse.successCount;
     const totalFailureCount = fcmResponse.failureCount + expoResponse.failureCount;
 
+    // Log detailed results
+    if (totalFailureCount > 0) {
+      console.warn(`⚠️  ${totalFailureCount} notification(s) failed out of ${tokens.length} total`);
+    }
+    if (totalSuccessCount > 0) {
+      console.log(`✅ ${totalSuccessCount} notification(s) sent successfully`);
+    }
+
     return {
-      success: true,
+      success: totalSuccessCount > 0, // Success if at least one notification was sent
       successCount: totalSuccessCount,
       failureCount: totalFailureCount,
       results: allResults,
+      ...(totalFailureCount === tokens.length && totalSuccessCount === 0 && {
+        error: 'All notifications failed to send',
+      }),
     };
   } catch (error) {
     console.error('Error sending multicast notification:', error.message);

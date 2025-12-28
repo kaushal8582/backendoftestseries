@@ -235,16 +235,21 @@ const sendNotification = async (req, res, next) => {
   try {
     const result = await notificationService.sendNotification(req.params.id);
 
-    res.status(HTTP_STATUS.OK).json({
+    // If result has error, return appropriate status
+    const statusCode = result.success ? HTTP_STATUS.OK : HTTP_STATUS.BAD_REQUEST;
+
+    res.status(statusCode).json({
       success: result.success,
-      message: result.message || 'Notification sent successfully',
+      message: result.message || (result.success ? 'Notification sent successfully' : 'Notification failed to send'),
       data: {
-        sent: result.sent,
-        failed: result.failed,
-        total: result.total,
+        sent: result.sent || 0,
+        failed: result.failed || 0,
+        total: result.total || 0,
+        ...(result.error && { error: result.error }),
       },
     });
   } catch (error) {
+    console.error('Error in sendNotification controller:', error);
     next(error);
   }
 };

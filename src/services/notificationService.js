@@ -180,20 +180,29 @@ const sendNotification = async (notificationId) => {
     const deviceTokens = await DeviceToken.find({
       userId: { $in: userIds },
       isActive: true,
-    }).select('token');
+    }).select('token platform').lean();
+
+    console.log(`📱 Found ${deviceTokens.length} active device token(s) for ${userIds.length} user(s)`);
 
     if (deviceTokens.length === 0) {
+      console.warn(`⚠️  No device tokens found for ${userIds.length} user(s). Users may need to open the app to register their device tokens.`);
       notification.status = 'failed';
+      notification.failureReason = 'No device tokens found. Users need to open the app to register their device tokens.';
       await notification.save();
       return {
         success: false,
-        message: 'No device tokens found',
+        message: 'No device tokens found. Users need to open the app to register their device tokens.',
         sent: 0,
         failed: 0,
       };
     }
 
     const tokens = deviceTokens.map((dt) => dt.token);
+    
+    // Log token types for debugging
+    const expoTokens = tokens.filter((t) => t && t.startsWith('ExponentPushToken'));
+    const fcmTokens = tokens.filter((t) => t && !t.startsWith('ExponentPushToken'));
+    console.log(`📱 Token breakdown: ${expoTokens.length} Expo tokens, ${fcmTokens.length} FCM tokens`);
 
     // Prepare notification payload
     const notificationPayload = {
@@ -208,14 +217,50 @@ const sendNotification = async (notificationId) => {
     };
 
     // Send notifications
+    console.log(`📤 Sending notification to ${tokens.length} device(s)...`);
     const result = await sendToMultipleDevices(tokens, notificationPayload, dataPayload);
 
+    // Log results for debugging
+    console.log(`📊 Notification send results:`, {
+      successCount: result.successCount || 0,
+      failureCount: result.failureCount || 0,
+      total: tokens.length,
+      hasError: result.error,
+    });
+
+    // Log individual failures for debugging
+    if (result.results && result.results.length > 0) {
+      const failures = result.results.filter((r) => !r.success);
+      if (failures.length > 0) {
+        console.error(`❌ Failed notifications (${failures.length}):`, failures.slice(0, 3).map((f) => ({
+          token: f.token?.substring(0, 20) + '...',
+          error: f.error,
+        })));
+      }
+    }
+
     // Update notification status and stats
-    notification.status = 'sent';
-    notification.sentAt = new Date();
+    // Mark as sent only if at least one notification was successful
+    // If all failed, mark as failed
+    const successCount = result.successCount || 0;
+    const failureCount = result.failureCount || 0;
+    
+    if (successCount > 0) {
+      notification.status = 'sent';
+      notification.sentAt = new Date();
+    } else if (failureCount === tokens.length) {
+      // All notifications failed
+      notification.status = 'failed';
+      notification.failureReason = result.error || 'All notifications failed';
+    } else {
+      // Partial success
+      notification.status = 'sent';
+      notification.sentAt = new Date();
+    }
+    
     notification.deliveryStats.totalSent = tokens.length;
-    notification.deliveryStats.totalDelivered = result.successCount || 0;
-    notification.deliveryStats.totalFailed = result.failureCount || 0;
+    notification.deliveryStats.totalDelivered = successCount;
+    notification.deliveryStats.totalFailed = failureCount;
     await notification.save();
 
     // Deactivate failed tokens
@@ -239,14 +284,25 @@ const sendNotification = async (notificationId) => {
       total: tokens.length,
     };
   } catch (error) {
+    console.error('❌ Error in sendNotification:', error);
+    console.error('Error stack:', error.stack);
+    
     // Update notification status to failed
     const notification = await Notification.findById(notificationId);
     if (notification) {
       notification.status = 'failed';
+      notification.failureReason = error.message || 'Unknown error occurred';
       await notification.save();
     }
 
-    throw new Error(`Failed to send notification: ${error.message}`);
+    // Return error details instead of throwing (so admin can see what went wrong)
+    return {
+      success: false,
+      message: `Failed to send notification: ${error.message}`,
+      sent: 0,
+      failed: 0,
+      error: error.message,
+    };
   }
 };
 

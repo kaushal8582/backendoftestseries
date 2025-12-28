@@ -64,14 +64,23 @@ const sendToExpoTokens = async (tokens, notification, data = {}) => {
     const successCount = results.filter((r) => r.status === 'ok').length;
     const failureCount = results.filter((r) => r.status === 'error').length;
 
+    // Log Expo API response for debugging
+    console.log(`📱 Expo API response: ${successCount} success, ${failureCount} failed out of ${tokens.length} tokens`);
+
     // Map results to our format
-    const mappedResults = results.map((result, index) => ({
-      success: result.status === 'ok',
-      token: tokens[index],
-      messageId: result.id || null,
-      error: result.status === 'error' ? (result.message || 'Unknown error') : null,
-      details: result.details || null,
-    }));
+    const mappedResults = results.map((result, index) => {
+      const isSuccess = result.status === 'ok';
+      if (!isSuccess) {
+        console.warn(`❌ Expo notification failed for token ${tokens[index]?.substring(0, 20)}...:`, result.message || 'Unknown error');
+      }
+      return {
+        success: isSuccess,
+        token: tokens[index],
+        messageId: result.id || null,
+        error: result.status === 'error' ? (result.message || result.details?.error || 'Unknown error') : null,
+        details: result.details || null,
+      };
+    });
 
     return {
       success: true,
