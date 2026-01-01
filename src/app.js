@@ -20,6 +20,12 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const promoCodeRoutes = require('./routes/promoCodeRoutes');
 const referralRoutes = require('./routes/referralRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
+const gamificationRoutes = require('./routes/gamificationRoutes');
+const dailyChallengeRoutes = require('./routes/dailyChallengeRoutes');
+const leaderboardRoutes = require('./routes/leaderboardRoutes');
+const powerUpRoutes = require('./routes/powerUpRoutes');
+const categoryMasteryRoutes = require('./routes/categoryMasteryRoutes');
+const quizRoomRoutes = require('./routes/quizRoomRoutes');
 
 // Initialize Express app
 const app = express();
@@ -70,6 +76,12 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/promo-codes', promoCodeRoutes);
 app.use('/api/referrals', referralRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/gamification', gamificationRoutes);
+app.use('/api/daily-challenges', dailyChallengeRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/power-ups', powerUpRoutes);
+app.use('/api/category-mastery', categoryMasteryRoutes);
+app.use('/api/quiz-rooms', quizRoomRoutes);
 
 // 404 handler
 app.use((req, res, next) => {

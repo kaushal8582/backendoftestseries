@@ -8,7 +8,12 @@ const { HTTP_STATUS } = require('../config/constants');
  */
 const startTest = async (req, res, next) => {
   try {
-    const testAttempt = await testAttemptService.startTest(req.user._id, req.params.testId);
+    const { dailyChallengeId } = req.body; // Get dailyChallengeId from request body
+    const testAttempt = await testAttemptService.startTest(
+      req.user._id,
+      req.params.testId,
+      dailyChallengeId || null
+    );
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -143,9 +148,11 @@ const getTestAttemptDetails = async (req, res, next) => {
  */
 const checkTestCompletion = async (req, res, next) => {
   try {
+    const { dailyChallengeId } = req.query; // Get dailyChallengeId from query params
     const result = await testAttemptService.checkTestCompletion(
       req.user._id,
-      req.params.testId
+      req.params.testId,
+      dailyChallengeId || null
     );
 
     res.status(HTTP_STATUS.OK).json({

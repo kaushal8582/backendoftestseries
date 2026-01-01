@@ -1,67 +1,96 @@
 const analyticsService = require('../services/analyticsService');
-const { HTTP_STATUS } = require('../config/constants');
+const { getTestLeaderboard } = require('../services/leaderboardService');
 
 /**
- * @route   GET /api/analytics/test/:testId
- * @desc    Get test performance analytics
- * @access  Private (Admin only)
+ * Track an analytics event
  */
-const getTestAnalytics = async (req, res, next) => {
+const trackEvent = async (req, res) => {
   try {
-    const analytics = await analyticsService.getTestAnalytics(req.params.testId);
+    const userId = req.user._id;
+    const { event, data, timestamp } = req.body;
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        analytics,
-      },
+    await analyticsService.trackEvent(userId, event, {
+      ...data,
+      platform: req.headers['x-platform'],
+      appVersion: req.headers['x-app-version'],
     });
+
+    res.status(200).json({ success: true });
   } catch (error) {
-    next(error);
+    console.error('Error tracking event:', error);
+    res.status(500).json({ error: 'Failed to track event' });
   }
 };
 
 /**
- * @route   GET /api/analytics/exam/:examId
- * @desc    Get exam performance analytics
- * @access  Private (Admin only)
+ * Get user analytics summary
  */
-const getExamAnalytics = async (req, res, next) => {
+const getUserAnalytics = async (req, res) => {
   try {
-    const analytics = await analyticsService.getExamAnalytics(req.params.examId);
+    const userId = req.user._id;
+    const { startDate, endDate } = req.query;
 
-    res.status(HTTP_STATUS.OK).json({
-      success: true,
-      data: {
-        analytics,
-      },
-    });
+    const analytics = await analyticsService.getUserAnalytics(
+      userId,
+      startDate,
+      endDate
+    );
+
+    res.status(200).json(analytics);
   } catch (error) {
-    next(error);
+    console.error('Error getting user analytics:', error);
+    res.status(500).json({ error: 'Failed to get analytics' });
   }
 };
 
 /**
- * @route   GET /api/analytics/test/:testId/leaderboard
- * @desc    Get test leaderboard
- * @access  Public
+ * Get app-wide analytics (admin only)
  */
-const getTestLeaderboard = async (req, res, next) => {
+const getAppAnalytics = async (req, res) => {
   try {
-    const result = await analyticsService.getTestLeaderboard(req.params.testId, req.query);
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
 
-    res.status(HTTP_STATUS.OK).json({
+    const { startDate, endDate } = req.query;
+
+    const analytics = await analyticsService.getAppAnalytics(startDate, endDate);
+
+    res.status(200).json(analytics);
+  } catch (error) {
+    console.error('Error getting app analytics:', error);
+    res.status(500).json({ error: 'Failed to get analytics' });
+  }
+};
+
+/**
+ * Get test leaderboard
+ */
+const getTestLeaderboardHandler = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const leaderboard = await getTestLeaderboard(testId, {
+      limit: parseInt(limit),
+      offset,
+    });
+
+    res.status(200).json({
       success: true,
-      data: result,
+      data: leaderboard,
     });
   } catch (error) {
-    next(error);
+    console.error('Error getting test leaderboard:', error);
+    res.status(500).json({ error: 'Failed to get test leaderboard' });
   }
 };
 
 module.exports = {
-  getTestAnalytics,
-  getExamAnalytics,
-  getTestLeaderboard,
+  trackEvent,
+  getUserAnalytics,
+  getAppAnalytics,
+  getTestLeaderboard: getTestLeaderboardHandler,
 };
-

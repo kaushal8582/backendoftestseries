@@ -94,6 +94,23 @@ const userSchema = new mongoose.Schema(
       lastActivityDate: { type: Date, default: null },
       dailyGoal: { type: Number, default: 5 }, // Default: 5 tests per day
     },
+    // Gamification System
+    gamification: {
+      xp: { type: Number, default: 0 },
+      level: { type: Number, default: 1 },
+      totalXP: { type: Number, default: 0 },
+      levelProgress: { type: Number, default: 0 }, // 0-100%
+      coins: { type: Number, default: 100 }, // Starting coins
+      totalCoinsEarned: { type: Number, default: 0 },
+      totalCoinsSpent: { type: Number, default: 0 },
+      avatar: {
+        base: { type: String, default: 'default' },
+        outfit: { type: String, default: null },
+        accessory: { type: String, default: null },
+        title: { type: String, default: null },
+        frame: { type: String, default: null },
+      },
+    },
     // Exam preference for personalized recommendations
     examPreference: {
       examIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Exam' }],

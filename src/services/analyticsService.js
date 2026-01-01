@@ -1,197 +1,160 @@
-const TestAttempt = require('../models/TestAttempt');
-const User = require('../models/User');
-const mongoose = require('mongoose');
-const { AppError } = require('../utils/errorHandler');
-const { HTTP_STATUS } = require('../config/constants');
+const AnalyticsEvent = require('../models/AnalyticsEvent');
 
 /**
- * Get test performance analytics
- * @param {string} testId - Test ID
- * @returns {Promise<Object>} - Test analytics
+ * Track an analytics event
  */
-const getTestAnalytics = async (testId) => {
-  const completedAttempts = await TestAttempt.find({
-    testId,
-    status: 'completed',
-  }).sort({ score: -1 });
-
-  if (completedAttempts.length === 0) {
-    return {
-      totalAttempts: 0,
-      averageScore: 0,
-      highestScore: 0,
-      lowestScore: 0,
-      averageAccuracy: 0,
-      averageTimeTaken: 0,
-      scoreDistribution: {},
-    };
-  }
-
-  const totalAttempts = completedAttempts.length;
-  const totalScore = completedAttempts.reduce((sum, attempt) => sum + attempt.score, 0);
-  const averageScore = (totalScore / totalAttempts).toFixed(2);
-  const highestScore = completedAttempts[0].score;
-  const lowestScore = completedAttempts[totalAttempts - 1].score;
-
-  const totalAccuracy = completedAttempts.reduce((sum, attempt) => sum + attempt.accuracy, 0);
-  const averageAccuracy = (totalAccuracy / totalAttempts).toFixed(2);
-
-  const totalTime = completedAttempts.reduce((sum, attempt) => sum + attempt.timeTaken, 0);
-  const averageTimeTaken = Math.floor(totalTime / totalAttempts);
-
-  // Score distribution (0-25, 26-50, 51-75, 76-100)
-  const scoreDistribution = {
-    '0-25': 0,
-    '26-50': 0,
-    '51-75': 0,
-    '76-100': 0,
-  };
-
-  completedAttempts.forEach((attempt) => {
-    const percentage = (attempt.score / attempt.totalMarks) * 100;
-    if (percentage <= 25) {
-      scoreDistribution['0-25']++;
-    } else if (percentage <= 50) {
-      scoreDistribution['26-50']++;
-    } else if (percentage <= 75) {
-      scoreDistribution['51-75']++;
-    } else {
-      scoreDistribution['76-100']++;
-    }
-  });
-
-  return {
-    totalAttempts,
-    averageScore: parseFloat(averageScore),
-    highestScore,
-    lowestScore,
-    averageAccuracy: parseFloat(averageAccuracy),
-    averageTimeTaken,
-    scoreDistribution,
-  };
-};
-
-/**
- * Get exam performance analytics
- * @param {string} examId - Exam ID
- * @returns {Promise<Object>} - Exam analytics
- */
-const getExamAnalytics = async (examId) => {
-  const completedAttempts = await TestAttempt.find({
-    examId,
-    status: 'completed',
-  });
-
-  if (completedAttempts.length === 0) {
-    return {
-      totalAttempts: 0,
-      uniqueUsers: 0,
-      averageScore: 0,
-      testWiseStats: [],
-    };
-  }
-
-  const uniqueUsers = new Set(completedAttempts.map((attempt) => attempt.userId.toString())).size;
-  const totalScore = completedAttempts.reduce((sum, attempt) => sum + attempt.score, 0);
-  const averageScore = (totalScore / completedAttempts.length).toFixed(2);
-
-  // Group by test
-  const testStats = {};
-  completedAttempts.forEach((attempt) => {
-    const testId = attempt.testId.toString();
-    if (!testStats[testId]) {
-      testStats[testId] = {
-        testId,
-        totalAttempts: 0,
-        averageScore: 0,
-        totalScore: 0,
-      };
-    }
-    testStats[testId].totalAttempts++;
-    testStats[testId].totalScore += attempt.score;
-  });
-
-  const testWiseStats = Object.values(testStats).map((stat) => ({
-    testId: stat.testId,
-    totalAttempts: stat.totalAttempts,
-    averageScore: (stat.totalScore / stat.totalAttempts).toFixed(2),
-  }));
-
-  return {
-    totalAttempts: completedAttempts.length,
-    uniqueUsers,
-    averageScore: parseFloat(averageScore),
-    testWiseStats,
-  };
-};
-
-/**
- * Get leaderboard for a test
- * @param {string} testId - Test ID
- * @param {Object} queryParams - Query parameters (page, limit)
- * @returns {Promise<Object>} - Leaderboard with pagination
- */
-const getTestLeaderboard = async (testId, queryParams = {}) => {
-  if (!testId) {
-    throw new AppError('Test ID is required', HTTP_STATUS.BAD_REQUEST);
-  }
-
-  // Convert testId to ObjectId if it's a string
-  let testIdObjectId;
+const trackEvent = async (userId, event, data = {}) => {
   try {
-    testIdObjectId = mongoose.Types.ObjectId.isValid(testId) 
-      ? new mongoose.Types.ObjectId(testId) 
-      : testId;
+    const analyticsEvent = new AnalyticsEvent({
+      userId,
+      event,
+      data,
+      timestamp: new Date(),
+      platform: data.platform,
+      appVersion: data.appVersion,
+    });
+
+    await analyticsEvent.save();
+    return analyticsEvent;
   } catch (error) {
-    throw new AppError('Invalid test ID format', HTTP_STATUS.BAD_REQUEST);
+    console.error('Error tracking event:', error);
+    throw error;
   }
+};
 
-  const { page = 1, limit = 10 } = queryParams;
-  const skip = (page - 1) * limit;
+/**
+ * Get user analytics summary
+ */
+const getUserAnalytics = async (userId, startDate, endDate) => {
+  try {
+    const query = { userId };
+    if (startDate || endDate) {
+      query.timestamp = {};
+      if (startDate) query.timestamp.$gte = new Date(startDate);
+      if (endDate) query.timestamp.$lte = new Date(endDate);
+    }
 
-  const attempts = await TestAttempt.find({
-    testId: testIdObjectId,
-    status: 'completed',
-  })
-    .populate('userId', 'name email')
-    .sort({ score: -1, timeTaken: 1 }) // Sort by score (desc) then time (asc)
-    .skip(skip)
-    .limit(parseInt(limit));
+    const events = await AnalyticsEvent.find(query).sort({ timestamp: -1 });
 
-  const total = await TestAttempt.countDocuments({
-    testId: testIdObjectId,
-    status: 'completed',
-  });
+    // Calculate summary statistics
+    const summary = {
+      totalEvents: events.length,
+      eventsByType: {},
+      dailyActivity: {},
+      testCompletions: 0,
+      powerUpsUsed: 0,
+      achievementsUnlocked: 0,
+      levelUps: 0,
+      coinsEarned: 0,
+      coinsSpent: 0,
+    };
 
-  // Add rank
-  const rankedAttempts = attempts.map((attempt, index) => ({
-    rank: skip + index + 1,
-    user: {
-      _id: attempt.userId._id,
-      name: attempt.userId.name,
-      email: attempt.userId.email,
-    },
-    score: attempt.score,
-    totalMarks: attempt.totalMarks,
-    accuracy: attempt.accuracy,
-    timeTaken: attempt.timeTaken,
-    submittedAt: attempt.submittedAt,
-  }));
+    events.forEach((event) => {
+      // Count by event type
+      summary.eventsByType[event.event] =
+        (summary.eventsByType[event.event] || 0) + 1;
 
-  return {
-    leaderboard: rankedAttempts,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit),
-    },
-  };
+      // Daily activity
+      const date = event.timestamp.toISOString().split('T')[0];
+      summary.dailyActivity[date] = (summary.dailyActivity[date] || 0) + 1;
+
+      // Specific event counts
+      if (event.event === 'test_completed') {
+        summary.testCompletions++;
+      } else if (event.event === 'power_up_used') {
+        summary.powerUpsUsed++;
+      } else if (event.event === 'achievement_unlocked') {
+        summary.achievementsUnlocked++;
+      } else if (event.event === 'level_up') {
+        summary.levelUps++;
+      } else if (event.event === 'coin_earned') {
+        summary.coinsEarned += event.data.amount || 0;
+      } else if (event.event === 'coin_spent') {
+        summary.coinsSpent += event.data.amount || 0;
+      }
+    });
+
+    return summary;
+  } catch (error) {
+    console.error('Error getting user analytics:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get app-wide analytics (admin only)
+ */
+const getAppAnalytics = async (startDate, endDate) => {
+  try {
+    const query = {};
+    if (startDate || endDate) {
+      query.timestamp = {};
+      if (startDate) query.timestamp.$gte = new Date(startDate);
+      if (endDate) query.timestamp.$lte = new Date(endDate);
+    }
+
+    const events = await AnalyticsEvent.find(query);
+
+    // Calculate app-wide statistics
+    const summary = {
+      totalEvents: events.length,
+      uniqueUsers: new Set(events.map((e) => e.userId.toString())).size,
+      eventsByType: {},
+      dailyActivity: {},
+      testCompletions: 0,
+      powerUpsUsed: 0,
+      achievementsUnlocked: 0,
+      levelUps: 0,
+      averageTestScore: 0,
+      totalCoinsEarned: 0,
+      totalCoinsSpent: 0,
+    };
+
+    let totalTestScore = 0;
+    let testCount = 0;
+
+    events.forEach((event) => {
+      // Count by event type
+      summary.eventsByType[event.event] =
+        (summary.eventsByType[event.event] || 0) + 1;
+
+      // Daily activity
+      const date = event.timestamp.toISOString().split('T')[0];
+      summary.dailyActivity[date] = (summary.dailyActivity[date] || 0) + 1;
+
+      // Specific event counts
+      if (event.event === 'test_completed') {
+        summary.testCompletions++;
+        if (event.data.score !== undefined) {
+          totalTestScore += event.data.score;
+          testCount++;
+        }
+      } else if (event.event === 'power_up_used') {
+        summary.powerUpsUsed++;
+      } else if (event.event === 'achievement_unlocked') {
+        summary.achievementsUnlocked++;
+      } else if (event.event === 'level_up') {
+        summary.levelUps++;
+      } else if (event.event === 'coin_earned') {
+        summary.totalCoinsEarned += event.data.amount || 0;
+      } else if (event.event === 'coin_spent') {
+        summary.totalCoinsSpent += event.data.amount || 0;
+      }
+    });
+
+    if (testCount > 0) {
+      summary.averageTestScore = totalTestScore / testCount;
+    }
+
+    return summary;
+  } catch (error) {
+    console.error('Error getting app analytics:', error);
+    throw error;
+  }
 };
 
 module.exports = {
-  getTestAnalytics,
-  getExamAnalytics,
-  getTestLeaderboard,
+  trackEvent,
+  getUserAnalytics,
+  getAppAnalytics,
 };
-

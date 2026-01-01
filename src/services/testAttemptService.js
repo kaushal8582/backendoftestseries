@@ -4,6 +4,10 @@ const Question = require('../models/Question');
 const User = require('../models/User');
 const { AppError } = require('../utils/errorHandler');
 const { HTTP_STATUS } = require('../config/constants');
+const { awardTestRewards } = require('./gamificationService');
+const { checkAchievements } = require('./achievementService');
+const { checkChallengeProgress } = require('./dailyChallengeService');
+const { updateCategoryMastery, checkAndUnlockSkills } = require('./categoryMasteryService');
 
 /**
  * Update study streak for a user
@@ -66,9 +70,10 @@ const updateStudyStreak = async (user) => {
  * Start a test attempt
  * @param {string} userId - User ID
  * @param {string} testId - Test ID
+ * @param {string} dailyChallengeId - Daily Challenge ID (optional)
  * @returns {Promise<Object>} - Test attempt object
  */
-const startTest = async (userId, testId) => {
+const startTest = async (userId, testId, dailyChallengeId = null) => {
   // Check if test exists
   const test = await Test.findById(testId).populate('examId');
   if (!test) {
@@ -76,25 +81,51 @@ const startTest = async (userId, testId) => {
   }
 
   // Check if user already has an in-progress attempt
-  const existingAttempt = await TestAttempt.findOne({
+  const existingAttemptQuery = {
     userId,
     testId,
     status: 'in-progress',
-  });
+  };
+  
+  // If this is for a daily challenge, check for daily challenge specific attempt
+  if (dailyChallengeId) {
+    existingAttemptQuery.dailyChallengeId = dailyChallengeId;
+  } else {
+    // For normal attempts, exclude daily challenge attempts
+    existingAttemptQuery.dailyChallengeId = null;
+  }
+
+  const existingAttempt = await TestAttempt.findOne(existingAttemptQuery);
 
   if (existingAttempt) {
     return existingAttempt;
   }
 
   // Check if user already completed this test
-  const completedAttempt = await TestAttempt.findOne({
+  // For Daily Challenge, check only daily challenge attempts
+  // For normal test, check only normal attempts (exclude daily challenge attempts)
+  const completedAttemptQuery = {
     userId,
     testId,
     status: 'completed',
-  });
+  };
+
+  if (dailyChallengeId) {
+    // For daily challenge, check if user completed this specific daily challenge
+    completedAttemptQuery.dailyChallengeId = dailyChallengeId;
+  } else {
+    // For normal test, exclude daily challenge attempts
+    completedAttemptQuery.dailyChallengeId = null;
+  }
+
+  const completedAttempt = await TestAttempt.findOne(completedAttemptQuery);
 
   if (completedAttempt) {
-    throw new AppError('You have already completed this test', HTTP_STATUS.CONFLICT);
+    if (dailyChallengeId) {
+      throw new AppError('You have already completed this daily challenge', HTTP_STATUS.CONFLICT);
+    } else {
+      throw new AppError('You have already completed this test', HTTP_STATUS.CONFLICT);
+    }
   }
 
   // Get all questions for the test
@@ -120,11 +151,21 @@ const startTest = async (userId, testId) => {
     userId,
     testId,
     examId: test.examId._id,
+    dailyChallengeId: dailyChallengeId || null,
     answers,
     status: 'in-progress',
     totalMarks: test.totalMarks,
     startedAt: new Date(),
   });
+
+  // Debug logging for daily challenge
+  if (dailyChallengeId) {
+    console.log('Daily Challenge Attempt Created:', {
+      attemptId: testAttempt._id,
+      testId: testAttempt.testId,
+      dailyChallengeId: testAttempt.dailyChallengeId,
+    });
+  }
 
   // Update user's totalTestsAttempted
   await User.findByIdAndUpdate(userId, {
@@ -199,10 +240,21 @@ const submitAnswer = async (attemptId, questionId, selectedOption, timeSpent = 0
 const submitTest = async (attemptId) => {
   const testAttempt = await TestAttempt.findById(attemptId)
     .populate('testId')
-    .populate('examId');
+    .populate('examId')
+    .populate('dailyChallengeId'); // Populate dailyChallengeId if it exists
 
   if (!testAttempt) {
     throw new AppError('Test attempt not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Debug: Log dailyChallengeId
+  if (testAttempt.dailyChallengeId) {
+    console.log('Test Attempt has dailyChallengeId:', {
+      attemptId: testAttempt._id,
+      dailyChallengeId: testAttempt.dailyChallengeId,
+      dailyChallengeIdType: typeof testAttempt.dailyChallengeId,
+      dailyChallengeIdValue: testAttempt.dailyChallengeId.toString ? testAttempt.dailyChallengeId.toString() : testAttempt.dailyChallengeId,
+    });
   }
 
   if (testAttempt.status === 'completed') {
@@ -289,6 +341,130 @@ const submitTest = async (attemptId) => {
     await updateStudyStreak(user);
 
     await user.save();
+
+    // Award gamification rewards (XP, Coins)
+    try {
+      const rewards = await awardTestRewards(testAttempt.userId, {
+        score: testAttempt.score,
+        totalMarks: testAttempt.totalMarks,
+        accuracy: testAttempt.accuracy,
+        correctAnswers: testAttempt.correctAnswers,
+        wrongAnswers: testAttempt.wrongAnswers,
+        skippedAnswers: testAttempt.skippedAnswers,
+        timeTaken: testAttempt.timeTaken,
+      });
+      
+      // Store rewards in test attempt for frontend display
+      testAttempt.gamificationRewards = {
+        xp: rewards.xp,
+        coins: rewards.coins,
+        levelUp: rewards.levelUp,
+        newLevel: rewards.newLevel,
+        xpBonuses: rewards.xpBonuses,
+        coinBonuses: rewards.coinBonuses,
+      };
+      
+      await testAttempt.save();
+
+      // Check and unlock achievements
+      try {
+        const scorePercentage = testAttempt.totalMarks > 0
+          ? (testAttempt.score / testAttempt.totalMarks) * 100
+          : 0;
+        
+        const newlyUnlocked = await checkAchievements(testAttempt.userId, 'test_completed', {
+          attemptId: testAttempt._id,
+          score: testAttempt.score,
+          scorePercentage,
+          accuracy: testAttempt.accuracy,
+        });
+
+      // Store newly unlocked achievements in test attempt
+      if (newlyUnlocked.length > 0) {
+        testAttempt.gamificationRewards.newAchievements = newlyUnlocked;
+        await testAttempt.save();
+      }
+
+      // Check daily challenge progress
+      try {
+        // Extract IDs properly - handle both ObjectId and populated objects
+        // If populated, extract _id; if ObjectId, convert to string; if already string, use as is
+        let testId = testAttempt.testId;
+        if (testId && typeof testId === 'object' && testId._id) {
+          testId = testId._id.toString();
+        } else if (testId && typeof testId === 'object') {
+          testId = testId.toString();
+        } else if (testId) {
+          testId = testId.toString();
+        }
+        
+        let dailyChallengeId = testAttempt.dailyChallengeId;
+        if (dailyChallengeId && typeof dailyChallengeId === 'object' && dailyChallengeId._id) {
+          dailyChallengeId = dailyChallengeId._id.toString();
+        } else if (dailyChallengeId && typeof dailyChallengeId === 'object') {
+          dailyChallengeId = dailyChallengeId.toString();
+        } else if (dailyChallengeId) {
+          dailyChallengeId = dailyChallengeId.toString();
+        }
+        
+        console.log('Checking Daily Challenge Progress:', {
+          userId: testAttempt.userId?.toString(),
+          testId: testId,
+          dailyChallengeId: dailyChallengeId,
+          testIdType: typeof testId,
+          dailyChallengeIdType: typeof dailyChallengeId,
+          testIdIsString: typeof testId === 'string',
+          dailyChallengeIdIsString: typeof dailyChallengeId === 'string',
+          score: testAttempt.score,
+          accuracy: testAttempt.accuracy,
+        });
+        
+        const completedChallenges = await checkChallengeProgress(testAttempt.userId, {
+          testId: testId, // Pass just the ID string, not the object
+          dailyChallengeId: dailyChallengeId, // Pass just the ID string, not the object
+          score: testAttempt.score,
+          totalMarks: testAttempt.totalMarks,
+          accuracy: testAttempt.accuracy,
+          timeTaken: testAttempt.timeTaken,
+        });
+
+        console.log('Completed Challenges:', completedChallenges);
+
+        if (completedChallenges.length > 0) {
+          testAttempt.gamificationRewards.completedChallenges = completedChallenges;
+          await testAttempt.save();
+          console.log('Daily Challenge rewards saved to test attempt');
+        }
+      } catch (error) {
+        console.error('Error checking daily challenges:', error);
+        console.error('Error stack:', error.stack);
+      }
+
+      // Update category mastery
+      try {
+        const masteryUpdate = await updateCategoryMastery(testAttempt.userId, testAttempt._id);
+        if (masteryUpdate && masteryUpdate.levelUp) {
+          // Check and unlock skills
+          const test = await Test.findById(testAttempt.testId).populate('examId');
+          if (test?.examId?.category) {
+            const categoryId = test.examId.category._id || test.examId.category;
+            const unlockedSkills = await checkAndUnlockSkills(testAttempt.userId, categoryId);
+            if (unlockedSkills.length > 0) {
+              testAttempt.gamificationRewards.unlockedSkills = unlockedSkills;
+              await testAttempt.save();
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error updating category mastery:', error);
+      }
+    } catch (error) {
+      console.error('Error checking achievements:', error);
+    }
+    } catch (error) {
+      // Log error but don't fail the test submission
+      console.error('Error awarding gamification rewards:', error);
+    }
   }
 
   return testAttempt;
@@ -420,12 +596,22 @@ const getTestAttemptDetails = async (attemptId, userId) => {
  * @param {string} testId - Test ID
  * @returns {Promise<Object>} - Completion status with attempt details if completed
  */
-const checkTestCompletion = async (userId, testId) => {
-  const completedAttempt = await TestAttempt.findOne({
+const checkTestCompletion = async (userId, testId, dailyChallengeId = null) => {
+  const query = {
     userId,
     testId,
     status: 'completed',
-  })
+  };
+
+  // If checking for daily challenge, only check daily challenge attempts
+  // If checking for normal test, exclude daily challenge attempts
+  if (dailyChallengeId) {
+    query.dailyChallengeId = dailyChallengeId;
+  } else {
+    query.dailyChallengeId = null;
+  }
+
+  const completedAttempt = await TestAttempt.findOne(query)
     .populate('testId', 'testName totalMarks duration')
     .sort({ submittedAt: -1 }); // Get the most recent completion
 

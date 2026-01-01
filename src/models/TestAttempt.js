@@ -10,12 +10,21 @@ const testAttemptSchema = new mongoose.Schema(
     testId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Test',
-      required: [true, 'Please provide test ID'],
+      required: false, // Optional for custom quiz room attempts
+      default: null,
     },
     examId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Exam',
-      required: [true, 'Please provide exam ID'],
+      required: false, // Optional for custom quiz room attempts
+      default: null,
+    },
+    // Daily Challenge ID - if this attempt is for a daily challenge
+    dailyChallengeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'DailyChallenge',
+      required: false,
+      default: null,
     },
     // Answers submitted by user
     answers: [
@@ -93,6 +102,42 @@ const testAttemptSchema = new mongoose.Schema(
       type: Number,
       default: null,
     },
+    // Power-ups used during test
+    powerUpsUsed: [{
+      powerUpId: { type: String, required: true },
+      type: { type: String, required: true },
+      usedAt: { type: Date, default: Date.now },
+      cost: { type: Number, default: 0 },
+      context: { type: mongoose.Schema.Types.Mixed, default: {} },
+    }],
+    // Boosts active for this test
+    boostsActive: [{
+      powerUpId: { type: String, required: true },
+      type: { type: String, required: true },
+      effectValue: { type: Number, default: 1 },
+      activatedAt: { type: Date, default: Date.now },
+    }],
+    // Gamification rewards
+    gamificationRewards: {
+      xp: { type: Number, default: 0 },
+      coins: { type: Number, default: 0 },
+      levelUp: { type: Boolean, default: false },
+      newLevel: { type: Number, default: null },
+      xpBonuses: {
+        score: { type: Number, default: 0 },
+        accuracy: { type: Number, default: 0 },
+        streak: { type: Number, default: 0 },
+        speed: { type: Number, default: 0 },
+        perfect: { type: Number, default: 0 },
+        firstAttempt: { type: Number, default: 0 },
+      },
+      coinBonuses: {
+        score: { type: Number, default: 0 },
+        streak: { type: Number, default: 0 },
+        level: { type: Number, default: 0 },
+        perfect: { type: Number, default: 0 },
+      },
+    },
     // Section-wise results (future ready)
     sectionWiseResults: [
       {
@@ -116,6 +161,7 @@ testAttemptSchema.index({ userId: 1, status: 1 });
 testAttemptSchema.index({ testId: 1, score: -1 }); // For ranking
 testAttemptSchema.index({ examId: 1 });
 testAttemptSchema.index({ submittedAt: -1 });
+testAttemptSchema.index({ userId: 1, dailyChallengeId: 1 }); // For daily challenge attempts
 
 module.exports = mongoose.model('TestAttempt', testAttemptSchema);
 
