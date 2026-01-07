@@ -1,5 +1,7 @@
 const questionService = require('../services/questionService');
 const { HTTP_STATUS } = require('../config/constants');
+const { uploadOnCloudinary } = require('../utils/cloudinary');
+const fs = require('fs');
 
 /**
  * @route   POST /api/questions
@@ -8,7 +10,96 @@ const { HTTP_STATUS } = require('../config/constants');
  */
 const createQuestion = async (req, res, next) => {
   try {
-    const question = await questionService.createQuestion(req.body);
+    // Parse nested objects from FormData
+    const questionData = {};
+    
+    // Copy all simple fields
+    Object.keys(req.body).forEach(key => {
+      if (!key.includes('[') && !key.includes(']')) {
+        questionData[key] = req.body[key];
+      }
+    });
+    
+    // Parse nested options
+    if (req.body['options[A]'] || req.body['options[B]'] || req.body['options[C]'] || req.body['options[D]']) {
+      questionData.options = {
+        A: req.body['options[A]'] || '',
+        B: req.body['options[B]'] || '',
+        C: req.body['options[C]'] || '',
+        D: req.body['options[D]'] || '',
+      };
+    } else if (req.body.options) {
+      questionData.options = req.body.options;
+    }
+    
+    // Parse nested optionsHindi
+    if (req.body['optionsHindi[A]'] || req.body['optionsHindi[B]'] || req.body['optionsHindi[C]'] || req.body['optionsHindi[D]']) {
+      questionData.optionsHindi = {
+        A: req.body['optionsHindi[A]'] || '',
+        B: req.body['optionsHindi[B]'] || '',
+        C: req.body['optionsHindi[C]'] || '',
+        D: req.body['optionsHindi[D]'] || '',
+      };
+    } else if (req.body.optionsHindi) {
+      questionData.optionsHindi = req.body.optionsHindi;
+    }
+    
+    // Parse nested solution
+    if (req.body['solution[english]'] || req.body['solution[hindi]']) {
+      questionData.solution = {
+        english: req.body['solution[english]'] || '',
+        hindi: req.body['solution[hindi]'] || '',
+      };
+    } else if (req.body.solution) {
+      questionData.solution = req.body.solution;
+    }
+    
+    // Handle image uploads
+    // Question image
+    if (req.files && req.files.questionImage && req.files.questionImage[0]) {
+      const cloudinaryResponse = await uploadOnCloudinary(req.files.questionImage[0].path);
+      if (cloudinaryResponse) {
+        questionData.questionImage = cloudinaryResponse.secure_url;
+      }
+    }
+    
+    // English option images
+    if (req.files) {
+      const optionKeys = ['A', 'B', 'C', 'D'];
+      questionData.optionImages = {};
+      
+      for (const key of optionKeys) {
+        const fieldName = `optionImage${key}`;
+        if (req.files[fieldName] && req.files[fieldName][0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files[fieldName][0].path);
+          if (cloudinaryResponse) {
+            questionData.optionImages[key] = cloudinaryResponse.secure_url;
+          }
+        }
+      }
+      
+      // Hindi option images
+      questionData.optionImagesHindi = {};
+      const reuseEnglishImages = req.body.reuseEnglishImages === 'true' || req.body.reuseEnglishImages === true;
+      
+      if (reuseEnglishImages) {
+        // Copy English images to Hindi
+        questionData.optionImagesHindi = { ...questionData.optionImages };
+      } else {
+        // Upload Hindi images separately
+        for (const key of optionKeys) {
+          const fieldName = `optionImageHindi${key}`;
+          if (req.files[fieldName] && req.files[fieldName][0]) {
+            const cloudinaryResponse = await uploadOnCloudinary(req.files[fieldName][0].path);
+            if (cloudinaryResponse) {
+              questionData.optionImagesHindi[key] = cloudinaryResponse.secure_url;
+            }
+          }
+        }
+      }
+    }
+    
+    const question = await questionService.createQuestion(questionData);
 
     res.status(HTTP_STATUS.CREATED).json({
       success: true,
@@ -113,7 +204,110 @@ const getQuestionById = async (req, res, next) => {
  */
 const updateQuestion = async (req, res, next) => {
   try {
-    const question = await questionService.updateQuestion(req.params.id, req.body);
+    // Parse nested objects from FormData
+    const questionData = {};
+    
+    // Copy all simple fields
+    Object.keys(req.body).forEach(key => {
+      if (!key.includes('[') && !key.includes(']')) {
+        questionData[key] = req.body[key];
+      }
+    });
+    
+    // Parse nested options
+    if (req.body['options[A]'] || req.body['options[B]'] || req.body['options[C]'] || req.body['options[D]']) {
+      questionData.options = {
+        A: req.body['options[A]'] || '',
+        B: req.body['options[B]'] || '',
+        C: req.body['options[C]'] || '',
+        D: req.body['options[D]'] || '',
+      };
+    } else if (req.body.options) {
+      questionData.options = req.body.options;
+    }
+    
+    // Parse nested optionsHindi
+    if (req.body['optionsHindi[A]'] || req.body['optionsHindi[B]'] || req.body['optionsHindi[C]'] || req.body['optionsHindi[D]']) {
+      questionData.optionsHindi = {
+        A: req.body['optionsHindi[A]'] || '',
+        B: req.body['optionsHindi[B]'] || '',
+        C: req.body['optionsHindi[C]'] || '',
+        D: req.body['optionsHindi[D]'] || '',
+      };
+    } else if (req.body.optionsHindi) {
+      questionData.optionsHindi = req.body.optionsHindi;
+    }
+    
+    // Parse nested solution
+    if (req.body['solution[english]'] || req.body['solution[hindi]']) {
+      questionData.solution = {
+        english: req.body['solution[english]'] || '',
+        hindi: req.body['solution[hindi]'] || '',
+      };
+    } else if (req.body.solution) {
+      questionData.solution = req.body.solution;
+    }
+    
+    // Handle image uploads
+    // Question image
+    if (req.files && req.files.questionImage && req.files.questionImage[0]) {
+      const cloudinaryResponse = await uploadOnCloudinary(req.files.questionImage[0].path);
+      if (cloudinaryResponse) {
+        questionData.questionImage = cloudinaryResponse.secure_url;
+      }
+    }
+    
+    // Get existing question to preserve existing data
+    const existingQuestion = await questionService.getQuestionById(req.params.id, true);
+    
+    // English option images
+    if (req.files) {
+      const optionKeys = ['A', 'B', 'C', 'D'];
+      // Start with existing images
+      questionData.optionImages = existingQuestion.optionImages || {};
+      
+      for (const key of optionKeys) {
+        const fieldName = `optionImage${key}`;
+        if (req.files[fieldName] && req.files[fieldName][0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files[fieldName][0].path);
+          if (cloudinaryResponse) {
+            questionData.optionImages[key] = cloudinaryResponse.secure_url;
+          }
+        }
+      }
+      
+      // Hindi option images
+      questionData.optionImagesHindi = existingQuestion.optionImagesHindi || {};
+      const reuseEnglishImages = req.body.reuseEnglishImages === 'true' || req.body.reuseEnglishImages === true;
+      
+      if (reuseEnglishImages) {
+        // Copy English images to Hindi
+        questionData.optionImagesHindi = { ...questionData.optionImages };
+      } else {
+        // Upload Hindi images separately or keep existing
+        for (const key of optionKeys) {
+          const fieldName = `optionImageHindi${key}`;
+          if (req.files[fieldName] && req.files[fieldName][0]) {
+            const cloudinaryResponse = await uploadOnCloudinary(req.files[fieldName][0].path);
+            if (cloudinaryResponse) {
+              questionData.optionImagesHindi[key] = cloudinaryResponse.secure_url;
+            }
+          }
+        }
+      }
+    } else {
+      // No new files, preserve existing images
+      questionData.optionImages = existingQuestion.optionImages || {};
+      questionData.optionImagesHindi = existingQuestion.optionImagesHindi || {};
+      
+      // Handle reuseEnglishImages flag even without new files
+      const reuseEnglishImages = req.body.reuseEnglishImages === 'true' || req.body.reuseEnglishImages === true;
+      if (reuseEnglishImages) {
+        questionData.optionImagesHindi = { ...questionData.optionImages };
+      }
+    }
+    
+    const question = await questionService.updateQuestion(req.params.id, questionData);
 
     res.status(HTTP_STATUS.OK).json({
       success: true,

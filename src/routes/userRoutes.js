@@ -41,6 +41,13 @@ router.get('/performance', authenticate, userController.getPerformanceSummary);
 router.get('/study-streak', authenticate, userController.getStudyStreak);
 
 /**
+ * @route   GET /api/users/transaction-history
+ * @desc    Get transaction history for XP and Coins
+ * @access  Private
+ */
+router.get('/transaction-history', authenticate, userController.getTransactionHistory);
+
+/**
  * @route   GET /api/users
  * @desc    Get all users (Admin only)
  * @access  Private (Admin only)

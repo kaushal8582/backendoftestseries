@@ -15,21 +15,25 @@ const validateCreateQuestion = [
     .isMongoId()
     .withMessage('Invalid test ID'),
   body('options.A')
-    .trim()
-    .notEmpty()
-    .withMessage('Option A is required'),
+    .optional()
+    .trim(),
   body('options.B')
-    .trim()
-    .notEmpty()
-    .withMessage('Option B is required'),
+    .optional()
+    .trim(),
   body('options.C')
-    .trim()
-    .notEmpty()
-    .withMessage('Option C is required'),
+    .optional()
+    .trim(),
   body('options.D')
-    .trim()
-    .notEmpty()
-    .withMessage('Option D is required'),
+    .optional()
+    .trim(),
+  body('optionImages.A')
+    .optional(),
+  body('optionImages.B')
+    .optional(),
+  body('optionImages.C')
+    .optional(),
+  body('optionImages.D')
+    .optional(),
   body('correctOption')
     .notEmpty()
     .withMessage('Correct option is required')
@@ -65,24 +69,24 @@ const validateUpdateQuestion = [
     .withMessage('Question text cannot be empty'),
   body('options.A')
     .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('Option A cannot be empty'),
+    .trim(),
   body('options.B')
     .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('Option B cannot be empty'),
+    .trim(),
   body('options.C')
     .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('Option C cannot be empty'),
+    .trim(),
   body('options.D')
     .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('Option D cannot be empty'),
+    .trim(),
+  body('optionImages.A')
+    .optional(),
+  body('optionImages.B')
+    .optional(),
+  body('optionImages.C')
+    .optional(),
+  body('optionImages.D')
+    .optional(),
   body('correctOption')
     .optional()
     .isIn(['A', 'B', 'C', 'D'])

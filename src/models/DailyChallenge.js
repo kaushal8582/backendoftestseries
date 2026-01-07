@@ -9,7 +9,6 @@ const dailyChallengeSchema = new mongoose.Schema(
     date: {
       type: Date,
       required: true,
-      unique: true,
       index: true,
     },
     challengeType: {
@@ -74,6 +73,8 @@ const dailyChallengeSchema = new mongoose.Schema(
   }
 );
 
+// Unique constraint: one challenge per type per date
+dailyChallengeSchema.index({ date: 1, challengeType: 1 }, { unique: true });
 dailyChallengeSchema.index({ date: 1, isActive: 1 });
 
 module.exports = mongoose.model('DailyChallenge', dailyChallengeSchema);

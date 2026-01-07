@@ -13,6 +13,10 @@ const questionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    questionImage: {
+      type: String, // URL from Cloudinary
+      trim: true,
+    },
     questionType: {
       type: String,
       enum: Object.values(QUESTION_TYPES),
@@ -41,10 +45,48 @@ const questionSchema = new mongoose.Schema(
         trim: true,
       },
     },
+    // English option images
+    optionImages: {
+      A: {
+        type: String, // URL from Cloudinary
+        trim: true,
+      },
+      B: {
+        type: String,
+        trim: true,
+      },
+      C: {
+        type: String,
+        trim: true,
+      },
+      D: {
+        type: String,
+        trim: true,
+      },
+    },
     // Hindi options
     optionsHindi: {
       A: {
         type: String,
+        trim: true,
+      },
+      B: {
+        type: String,
+        trim: true,
+      },
+      C: {
+        type: String,
+        trim: true,
+      },
+      D: {
+        type: String,
+        trim: true,
+      },
+    },
+    // Hindi option images
+    optionImagesHindi: {
+      A: {
+        type: String, // URL from Cloudinary
         trim: true,
       },
       B: {

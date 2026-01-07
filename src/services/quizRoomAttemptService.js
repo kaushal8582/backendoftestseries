@@ -38,8 +38,8 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
     throw new AppError(statusMessage, HTTP_STATUS.BAD_REQUEST);
   }
 
-  // Check if user already has a completed attempt for this room
-  const existingRoomAttempt = await QuizRoomAttempt.findOne({
+  // Check if user already has an attempt for this room
+  let existingRoomAttempt = await QuizRoomAttempt.findOne({
     roomId: quizRoom._id,
     userId,
   });
@@ -77,19 +77,41 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
     }
   }
 
-  // Create quiz room attempt
-  const quizRoomAttempt = await QuizRoomAttempt.create({
-    roomId: quizRoom._id,
-    userId,
-    attemptId: testAttempt._id,
-    totalMarks: quizRoom.totalMarks,
-  });
+  // Create quiz room attempt - handle duplicate key error gracefully (race condition)
+  try {
+    const quizRoomAttempt = await QuizRoomAttempt.create({
+      roomId: quizRoom._id,
+      userId,
+      attemptId: testAttempt._id,
+      totalMarks: quizRoom.totalMarks,
+    });
 
-  // Update participant with attemptId
-  participant.attemptId = testAttempt._id;
-  await quizRoom.save();
+    // Update participant with attemptId
+    participant.attemptId = testAttempt._id;
+    await quizRoom.save();
 
-  return quizRoomAttempt;
+    return quizRoomAttempt;
+  } catch (error) {
+    // Handle duplicate key error (race condition - another request created the attempt)
+    if (error.code === 11000 || error.message?.includes('duplicate key')) {
+      // Fetch the existing attempt that was created by another request
+      existingRoomAttempt = await QuizRoomAttempt.findOne({
+        roomId: quizRoom._id,
+        userId,
+      });
+      
+      if (existingRoomAttempt) {
+        // Update participant with attemptId if not already set
+        if (!participant.attemptId) {
+          participant.attemptId = existingRoomAttempt.attemptId;
+          await quizRoom.save();
+        }
+        return existingRoomAttempt;
+      }
+    }
+    // Re-throw if it's a different error
+    throw error;
+  }
 };
 
 /**

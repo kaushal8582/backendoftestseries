@@ -19,9 +19,15 @@ const createPlatformTestRoom = async (roomData) => {
     throw new AppError('Test not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  // Calculate end time
+  // Always use test's duration from database, ignore duration from request
+  const testDuration = test.duration;
+  if (!testDuration || testDuration < 1) {
+    throw new AppError('Test does not have a valid duration', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Calculate end time using test's duration
   const start = new Date(startTime);
-  const end = new Date(start.getTime() + duration * 60 * 1000);
+  const end = new Date(start.getTime() + testDuration * 60 * 1000);
 
   // Check if start time is in future
   if (start < new Date()) {
@@ -50,7 +56,7 @@ const createPlatformTestRoom = async (roomData) => {
     description: test.description,
     startTime: start,
     endTime: end,
-    duration,
+    duration: testDuration, // Always use test's duration from database
     totalMarks,
     marksPerQuestion,
     negativeMarking,

@@ -543,7 +543,12 @@ const getTestAttemptDetails = async (attemptId, userId) => {
       question: {
         _id: question._id,
         questionText: question.questionText,
+        questionTextHindi: question.questionTextHindi,
+        questionImage: question.questionImage,
         options: question.options,
+        optionsHindi: question.optionsHindi,
+        optionImages: question.optionImages,
+        optionImagesHindi: question.optionImagesHindi,
         marks: question.marks,
         negativeMarks: question.negativeMarks,
         order: question.order,
@@ -551,6 +556,7 @@ const getTestAttemptDetails = async (attemptId, userId) => {
         // Include correct option only if test is completed
         correctOption: testAttempt.status === 'completed' ? question.correctOption : undefined,
         explanation: testAttempt.status === 'completed' ? question.explanation : undefined,
+        explanationHindi: testAttempt.status === 'completed' ? question.explanationHindi : undefined,
         // Include solution only if test is completed
         solution: testAttempt.status === 'completed' ? question.solution : undefined,
       },

@@ -25,6 +25,16 @@ const createQuestion = async (questionData) => {
     throw new AppError('Question with this order already exists for this test', HTTP_STATUS.CONFLICT);
   }
 
+  // Validate that each option has either text or image
+  const optionKeys = ['A', 'B', 'C', 'D'];
+  for (const key of optionKeys) {
+    const hasText = questionData.options?.[key]?.trim();
+    const hasImage = questionData.optionImages?.[key];
+    if (!hasText && !hasImage) {
+      throw new AppError(`Option ${key} must have either text or image`, HTTP_STATUS.BAD_REQUEST);
+    }
+  }
+
   const question = await Question.create(questionData);
 
   return question;
@@ -60,6 +70,10 @@ const getQuestions = async (testId, queryParams = {}) => {
       if (questionObj.optionsHindi && questionObj.optionsHindi.A) {
         questionObj.options = questionObj.optionsHindi;
       }
+      // Use Hindi option images if available
+      if (questionObj.optionImagesHindi && Object.keys(questionObj.optionImagesHindi).length > 0) {
+        questionObj.optionImages = questionObj.optionImagesHindi;
+      }
       if (questionObj.explanationHindi) {
         questionObj.explanation = questionObj.explanationHindi;
       }
@@ -83,9 +97,11 @@ const getQuestions = async (testId, queryParams = {}) => {
     }
     
     // Clean up - remove language-specific fields that are not needed
+    // But keep image fields as they might be used
     delete questionObj.questionTextHindi;
     delete questionObj.optionsHindi;
     delete questionObj.explanationHindi;
+    // Keep optionImagesHindi for reference, but use optionImages for display
     
     return questionObj;
   });

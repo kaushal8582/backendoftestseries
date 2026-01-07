@@ -119,6 +119,24 @@ const getStudyStreak = async (req, res, next) => {
 };
 
 /**
+ * @route   GET /api/users/transaction-history
+ * @desc    Get transaction history for XP and Coins
+ * @access  Private
+ */
+const getTransactionHistory = async (req, res, next) => {
+  try {
+    const result = await userService.getTransactionHistory(req.user._id, req.query);
+
+    res.status(HTTP_STATUS.OK).json({
+      success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * @route   GET /api/users
  * @desc    Get all users (Admin only)
  * @access  Private (Admin only)
@@ -224,6 +242,7 @@ module.exports = {
   getTestAttempts,
   getPerformanceSummary,
   getStudyStreak,
+  getTransactionHistory,
   getAllUsers,
   getUserById,
   updateUserRole,

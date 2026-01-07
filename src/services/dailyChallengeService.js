@@ -17,12 +17,49 @@ const generateDailyChallenges = async () => {
   today.setHours(0, 0, 0, 0);
 
   // Check if challenges already exist for today
-  const existing = await DailyChallenge.findOne({ date: today });
-  if (existing) {
-    return [existing];
+  const existingChallenges = await DailyChallenge.find({ date: today });
+  if (existingChallenges.length > 0) {
+    console.log('🟢 [generateDailyChallenges] Challenges already exist for today, returning existing:', existingChallenges.length);
+    return existingChallenges;
   }
 
   const challenges = [];
+
+  // Helper function to create or get existing challenge
+  const createOrGetChallenge = async (challengeData) => {
+    // First check if challenge already exists
+    const existing = await DailyChallenge.findOne({
+      date: challengeData.date,
+      challengeType: challengeData.challengeType,
+    });
+    
+    if (existing) {
+      console.log('🟢 [generateDailyChallenges] Challenge already exists:', challengeData.challengeType);
+      return existing;
+    }
+    
+    // Try to create, handle duplicate key error gracefully
+    try {
+      const challenge = await DailyChallenge.create(challengeData);
+      console.log('🟢 [generateDailyChallenges] Created new challenge:', challengeData.challengeType);
+      return challenge;
+    } catch (error) {
+      // If duplicate key error (race condition), fetch the existing challenge
+      if (error.code === 11000 || error.message?.includes('duplicate key')) {
+        console.log('🟢 [generateDailyChallenges] Duplicate detected (race condition), fetching existing challenge:', challengeData.challengeType);
+        const existingChallenge = await DailyChallenge.findOne({
+          date: challengeData.date,
+          challengeType: challengeData.challengeType,
+        });
+        if (existingChallenge) {
+          return existingChallenge;
+        }
+      }
+      // Re-throw if it's a different error
+      console.error('❌ [generateDailyChallenges] Error creating challenge:', challengeData.challengeType, error);
+      throw error;
+    }
+  };
 
   // 1. Daily Test Challenge - Pick a random test
   const randomTest = await Test.aggregate([
@@ -31,7 +68,7 @@ const generateDailyChallenges = async () => {
   ]);
 
   if (randomTest.length > 0) {
-    const dailyTestChallenge = await DailyChallenge.create({
+    const dailyTestChallenge = await createOrGetChallenge({
       date: today,
       challengeType: 'daily_test',
       title: 'Daily Test Challenge',
@@ -44,24 +81,24 @@ const generateDailyChallenges = async () => {
   }
 
   // 2. Accuracy Challenge
-  const accuracyChallenge = await DailyChallenge.create({
+  const accuracyChallenge = await createOrGetChallenge({
     date: today,
     challengeType: 'accuracy',
     title: 'Accuracy Master',
     description: 'Complete a test with 85%+ accuracy',
     target: 85,
-      reward: { xp: 37, coins: 37 },
+    reward: { xp: 37, coins: 37 },
   });
   challenges.push(accuracyChallenge);
 
   // 3. Speed Challenge
-  const speedChallenge = await DailyChallenge.create({
+  const speedChallenge = await createOrGetChallenge({
     date: today,
     challengeType: 'speed',
     title: 'Speed Demon',
     description: 'Complete a test in 60% of the allocated time',
     target: 60, // 60% of time
-      reward: { xp: 50, coins: 50 },
+    reward: { xp: 50, coins: 50 },
   });
   challenges.push(speedChallenge);
 
@@ -72,7 +109,7 @@ const generateDailyChallenges = async () => {
   ]);
 
   if (randomCategory.length > 0) {
-    const categoryChallenge = await DailyChallenge.create({
+    const categoryChallenge = await createOrGetChallenge({
       date: today,
       challengeType: 'category_focus',
       title: 'Category Focus',
@@ -84,6 +121,7 @@ const generateDailyChallenges = async () => {
     challenges.push(categoryChallenge);
   }
 
+  console.log('🟢 [generateDailyChallenges] Generated/retrieved', challenges.length, 'challenges for today');
   return challenges;
 };
 

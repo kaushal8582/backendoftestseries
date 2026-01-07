@@ -3,6 +3,7 @@ const router = express.Router();
 const questionController = require('../controllers/questionController');
 const { authenticate, authorize } = require('../middlewares/auth');
 const { USER_ROLES } = require('../config/constants');
+const upload = require('../middlewares/multer');
 const {
   validateCreateQuestion,
   validateUpdateQuestion,
@@ -17,6 +18,17 @@ router.post(
   '/',
   authenticate,
   authorize(USER_ROLES.ADMIN),
+  upload.fields([
+    { name: 'questionImage', maxCount: 1 },
+    { name: 'optionImageA', maxCount: 1 },
+    { name: 'optionImageB', maxCount: 1 },
+    { name: 'optionImageC', maxCount: 1 },
+    { name: 'optionImageD', maxCount: 1 },
+    { name: 'optionImageHindiA', maxCount: 1 },
+    { name: 'optionImageHindiB', maxCount: 1 },
+    { name: 'optionImageHindiC', maxCount: 1 },
+    { name: 'optionImageHindiD', maxCount: 1 },
+  ]),
   validateCreateQuestion,
   questionController.createQuestion
 );
@@ -56,6 +68,17 @@ router.put(
   '/:id',
   authenticate,
   authorize(USER_ROLES.ADMIN),
+  upload.fields([
+    { name: 'questionImage', maxCount: 1 },
+    { name: 'optionImageA', maxCount: 1 },
+    { name: 'optionImageB', maxCount: 1 },
+    { name: 'optionImageC', maxCount: 1 },
+    { name: 'optionImageD', maxCount: 1 },
+    { name: 'optionImageHindiA', maxCount: 1 },
+    { name: 'optionImageHindiB', maxCount: 1 },
+    { name: 'optionImageHindiC', maxCount: 1 },
+    { name: 'optionImageHindiD', maxCount: 1 },
+  ]),
   validateUpdateQuestion,
   questionController.updateQuestion
 );
