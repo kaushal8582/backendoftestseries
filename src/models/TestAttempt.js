@@ -26,6 +26,13 @@ const testAttemptSchema = new mongoose.Schema(
       required: false,
       default: null,
     },
+    // Quiz Room ID - if this attempt is for a quiz room
+    quizRoomId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'QuizRoom',
+      required: false,
+      default: null,
+    },
     // Answers submitted by user
     answers: [
       {
@@ -162,6 +169,7 @@ testAttemptSchema.index({ testId: 1, score: -1 }); // For ranking
 testAttemptSchema.index({ examId: 1 });
 testAttemptSchema.index({ submittedAt: -1 });
 testAttemptSchema.index({ userId: 1, dailyChallengeId: 1 }); // For daily challenge attempts
+testAttemptSchema.index({ userId: 1, quizRoomId: 1 }); // For quiz room attempts
 
 module.exports = mongoose.model('TestAttempt', testAttemptSchema);
 

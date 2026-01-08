@@ -312,12 +312,17 @@ const submitTest = async (attemptId) => {
 
   // Calculate rank (placeholder - simple implementation)
   // In production, this should be more sophisticated
-  const betterAttempts = await TestAttempt.countDocuments({
+  // Exclude quiz room attempts and daily challenge attempts from rank calculation
+  // Quiz room attempts have their own separate leaderboard
+  const rankQuery = {
     testId: testAttempt.testId,
     status: 'completed',
     score: { $gt: score },
     _id: { $ne: attemptId },
-  });
+    quizRoomId: null, // Exclude quiz room attempts
+    dailyChallengeId: null, // Exclude daily challenge attempts (they have separate leaderboard)
+  };
+  const betterAttempts = await TestAttempt.countDocuments(rankQuery);
   testAttempt.rank = betterAttempts + 1;
 
   await testAttempt.save();

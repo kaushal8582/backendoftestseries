@@ -420,9 +420,11 @@ const getTestLeaderboard = async (testId, options = {}) => {
   const { limit = 50, offset = 0 } = options;
 
   // Get all completed attempts for this test, sorted by score
+  // Exclude quiz room attempts - they have their own separate leaderboard
   const attempts = await TestAttempt.find({
     testId,
     status: 'completed',
+    quizRoomId: null, // Exclude quiz room attempts from general leaderboard
   })
     .populate('userId', 'name email gamification')
     .sort({ score: -1, accuracy: -1, timeTaken: 1, submittedAt: 1 })
@@ -461,6 +463,7 @@ const getTestLeaderboard = async (testId, options = {}) => {
   const total = await TestAttempt.countDocuments({
     testId,
     status: 'completed',
+    quizRoomId: null, // Exclude quiz room attempts from count
   });
 
   return {

@@ -86,6 +86,10 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
       totalMarks: quizRoom.totalMarks,
     });
 
+    // Update test attempt with quizRoomId to mark it as a quiz room attempt
+    testAttempt.quizRoomId = quizRoom._id;
+    await testAttempt.save();
+
     // Update participant with attemptId
     participant.attemptId = testAttempt._id;
     await quizRoom.save();
@@ -101,6 +105,13 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
       });
       
       if (existingRoomAttempt) {
+        // Update test attempt with quizRoomId if not already set
+        const existingTestAttempt = await TestAttempt.findById(existingRoomAttempt.attemptId);
+        if (existingTestAttempt && !existingTestAttempt.quizRoomId) {
+          existingTestAttempt.quizRoomId = quizRoom._id;
+          await existingTestAttempt.save();
+        }
+        
         // Update participant with attemptId if not already set
         if (!participant.attemptId) {
           participant.attemptId = existingRoomAttempt.attemptId;
@@ -151,6 +162,7 @@ const createTestAttemptForRoom = async (userId, testId) => {
   const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
 
   // Create test attempt (for quiz room, we allow multiple attempts even if user completed it on platform)
+  // Note: quizRoomId will be set after QuizRoomAttempt is created
   const testAttempt = await TestAttempt.create({
     userId,
     testId: test._id,
@@ -212,6 +224,7 @@ const createCustomTestAttempt = async (userId, quizRoom) => {
   
   // Note: For custom questions, we might need to adjust this
   // For now, we'll create a TestAttempt but mark it specially
+  // Note: quizRoomId will be set after QuizRoomAttempt is created
   const testAttempt = await TestAttempt.create({
     userId,
     testId: null, // Custom questions don't have a testId
