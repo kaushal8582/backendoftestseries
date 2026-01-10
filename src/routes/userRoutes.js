@@ -20,6 +20,13 @@ router.get('/profile', authenticate, userController.getProfile);
 router.put('/profile', authenticate, upload.single('profilePicture'), userController.updateProfile);
 
 /**
+ * @route   POST /api/users/profile
+ * @desc    Update user profile (alternative endpoint for React Native FormData uploads)
+ * @access  Private
+ */
+router.post('/profile', authenticate, upload.single('profilePicture'), userController.updateProfile);
+
+/**
  * @route   GET /api/users/test-attempts
  * @desc    Get user test attempts
  * @access  Private

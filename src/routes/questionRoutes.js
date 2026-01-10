@@ -28,6 +28,10 @@ router.post(
     { name: 'optionImageHindiB', maxCount: 1 },
     { name: 'optionImageHindiC', maxCount: 1 },
     { name: 'optionImageHindiD', maxCount: 1 },
+    { name: 'explanationImageEnglish', maxCount: 1 },
+    { name: 'explanationImageHindi', maxCount: 1 },
+    { name: 'solutionImageEnglish', maxCount: 1 },
+    { name: 'solutionImageHindi', maxCount: 1 },
   ]),
   validateCreateQuestion,
   questionController.createQuestion
@@ -78,6 +82,10 @@ router.put(
     { name: 'optionImageHindiB', maxCount: 1 },
     { name: 'optionImageHindiC', maxCount: 1 },
     { name: 'optionImageHindiD', maxCount: 1 },
+    { name: 'explanationImageEnglish', maxCount: 1 },
+    { name: 'explanationImageHindi', maxCount: 1 },
+    { name: 'solutionImageEnglish', maxCount: 1 },
+    { name: 'solutionImageHindi', maxCount: 1 },
   ]),
   validateUpdateQuestion,
   questionController.updateQuestion

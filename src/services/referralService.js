@@ -15,15 +15,41 @@ const generateReferralCode = async (userId) => {
     throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  // Generate code from user ID and name
-  const code = `${user.name.substring(0, 3).toUpperCase()}${userId.toString().substring(0, 6).toUpperCase()}`;
+  // Generate base code from user ID and name
+  const namePart = user.name.substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'USR';
+  const idPart = userId.toString().substring(userId.toString().length - 6).toUpperCase();
+  const baseCode = `${namePart}${idPart}`;
 
-  // Check if code already exists
-  const existingUser = await User.findOne({ referralCode: code });
-  if (existingUser) {
-    // If exists, add random suffix
-    const randomSuffix = Math.random().toString(36).substring(2, 5).toUpperCase();
-    return `${code}${randomSuffix}`;
+  // Try to generate unique code (max 10 attempts)
+  let code = baseCode;
+  let attempts = 0;
+  const maxAttempts = 10;
+
+  while (attempts < maxAttempts) {
+    // Check if code already exists
+    const existingUser = await User.findOne({ referralCode: code });
+    
+    if (!existingUser) {
+      // Code is unique, return it
+      return code;
+    }
+
+    // Code exists, generate new one with random suffix
+    const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
+    code = `${baseCode}${randomSuffix}`;
+    attempts++;
+  }
+
+  // If still not unique after max attempts, use timestamp-based code
+  const timestamp = Date.now().toString(36).toUpperCase().substring(-4);
+  code = `${baseCode}${timestamp}`;
+  
+  // Final check
+  const finalCheck = await User.findOne({ referralCode: code });
+  if (finalCheck) {
+    // Last resort: use full userId hash
+    const hash = userId.toString().split('').reverse().join('').substring(0, 6).toUpperCase();
+    code = `${namePart}${hash}`;
   }
 
   return code;
@@ -44,12 +70,36 @@ const getOrCreateReferralCode = async (userId) => {
     return user.referralCode;
   }
 
-  // Generate and assign referral code
-  const referralCode = await generateReferralCode(userId);
-  user.referralCode = referralCode;
-  await user.save();
+  // Generate and assign referral code with retry logic for duplicate key errors
+  let attempts = 0;
+  const maxAttempts = 5;
 
-  return referralCode;
+  while (attempts < maxAttempts) {
+    try {
+      const referralCode = await generateReferralCode(userId);
+      user.referralCode = referralCode;
+      await user.save();
+      return referralCode;
+    } catch (error) {
+      // Check if it's a duplicate key error
+      if (error.code === 11000 && error.keyPattern && error.keyPattern.referralCode) {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          // Last attempt: use completely random code
+          const randomCode = `REF${Math.random().toString(36).substring(2, 9).toUpperCase()}${Date.now().toString(36).toUpperCase().substring(-4)}`;
+          user.referralCode = randomCode;
+          await user.save();
+          return randomCode;
+        }
+        // Retry with new code
+        continue;
+      }
+      // If it's not a duplicate key error, throw it
+      throw error;
+    }
+  }
+
+  throw new AppError('Failed to generate unique referral code', HTTP_STATUS.INTERNAL_SERVER_ERROR);
 };
 
 /**

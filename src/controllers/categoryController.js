@@ -27,6 +27,15 @@ const createCategory = async (req, res, next) => {
       icon: iconUrl || req.body.icon,
       createdBy: req.user._id,
     };
+
+    // Handle isActive field from FormData (comes as string 'true'/'false')
+    if (req.body.isActive !== undefined) {
+      categoryData.isActive = req.body.isActive === 'true' || req.body.isActive === true || req.body.isActive === '1';
+    } else {
+      // Default to true if not provided
+      categoryData.isActive = true;
+    }
+
     const category = await categoryService.createCategory(categoryData);
 
     res.status(HTTP_STATUS.CREATED).json({
@@ -104,6 +113,11 @@ const updateCategory = async (req, res, next) => {
       ...req.body,
       icon: iconUrl !== undefined ? iconUrl : req.body.icon,
     };
+
+    // Handle isActive field from FormData (comes as string 'true'/'false')
+    if (req.body.isActive !== undefined) {
+      updateData.isActive = req.body.isActive === 'true' || req.body.isActive === true || req.body.isActive === '1';
+    }
 
     const category = await categoryService.updateCategory(req.params.id, updateData);
 

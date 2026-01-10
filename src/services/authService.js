@@ -28,36 +28,83 @@ const register = async (userData) => {
   const otpExpiry = new Date();
   otpExpiry.setMinutes(otpExpiry.getMinutes() + 10); // OTP valid for 10 minutes
 
-  // Create user
-  const user = await User.create({
-    name,
-    email,
-    password: hashedPassword,
-    phone: phone || undefined,
-    emailVerificationOTP: otp,
-    emailVerificationOTPExpiry: otpExpiry,
-    isEmailVerified: false,
-  });
+  // Create user - only set specific fields to avoid unwanted fields
+  try {
+    const user = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      phone: phone || undefined,
+      emailVerificationOTP: otp,
+      emailVerificationOTPExpiry: otpExpiry,
+      isEmailVerified: false,
+      // Explicitly set referralCode to null to avoid any issues
+      referralCode: null,
+    });
 
-  // Send verification OTP email (don't wait for it to complete)
-  sendVerificationOTP(email, name, otp).catch((err) => {
-    console.error('Error sending verification email:', err);
-    // Don't throw error - user is already created
-  });
+    // Send verification OTP email (don't wait for it to complete)
+    sendVerificationOTP(email, name, otp).catch((err) => {
+      console.error('Error sending verification email:', err);
+      // Don't throw error - user is already created
+    });
 
-  // Generate token
-  const token = generateToken(user._id, user.role);
+    // Generate token
+    const token = generateToken(user._id, user.role);
 
-  // Remove password and OTP from response
-  const userObject = user.toObject();
-  delete userObject.password;
-  delete userObject.emailVerificationOTP;
-  delete userObject.emailVerificationOTPExpiry;
+    // Remove password and OTP from response
+    const userObject = user.toObject();
+    delete userObject.password;
+    delete userObject.emailVerificationOTP;
+    delete userObject.emailVerificationOTPExpiry;
 
-  return {
-    user: userObject,
-    token,
-  };
+    return {
+      user: userObject,
+      token,
+    };
+  } catch (error) {
+    // Handle duplicate key errors (e.g., referralCode, email)
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0] || 'field';
+      if (field === 'referralCode') {
+        // Retry with null referralCode
+        try {
+          const user = await User.create({
+            name,
+            email,
+            password: hashedPassword,
+            phone: phone || undefined,
+            emailVerificationOTP: otp,
+            emailVerificationOTPExpiry: otpExpiry,
+            isEmailVerified: false,
+            referralCode: null,
+          });
+
+          sendVerificationOTP(email, name, otp).catch((err) => {
+            console.error('Error sending verification email:', err);
+          });
+
+          const token = generateToken(user._id, user.role);
+          const userObject = user.toObject();
+          delete userObject.password;
+          delete userObject.emailVerificationOTP;
+          delete userObject.emailVerificationOTPExpiry;
+
+          return {
+            user: userObject,
+            token,
+          };
+        } catch (retryError) {
+          throw new AppError('Registration failed. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+        }
+      } else if (field === 'email') {
+        throw new AppError('User already exists with this email', HTTP_STATUS.CONFLICT);
+      } else {
+        throw new AppError(`Registration failed: ${field} already exists`, HTTP_STATUS.CONFLICT);
+      }
+    }
+    // Re-throw other errors
+    throw error;
+  }
 };
 
 /**

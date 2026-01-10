@@ -65,7 +65,31 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
       throw new AppError('This quiz room is configured for a platform test, but no test is assigned. Please contact the room host.', HTTP_STATUS.BAD_REQUEST);
     }
     
-    // Create a new test attempt for quiz room (bypass platform test completion check)
+    // Check if user has already attempted this test in quiz mode
+    // Allow quiz attempts if user has attempted in normal mode first (2nd, 3rd attempt)
+    // Also allow if no attempts exist (1st attempt)
+    const existingNormalAttempt = await TestAttempt.findOne({
+      userId,
+      testId: quizRoom.testId._id,
+      quizRoomId: null, // Normal attempt
+      dailyChallengeId: null,
+    }).sort({ createdAt: 1 }); // Get earliest attempt
+
+    if (existingNormalAttempt) {
+      // User has attempted in normal mode first, allow quiz attempt (2nd/3rd attempt)
+      // Count existing attempts to show attempt number
+      const attemptCount = await TestAttempt.countDocuments({
+        userId,
+        testId: quizRoom.testId._id,
+        dailyChallengeId: null,
+      });
+      // Continue to create quiz attempt - this will be attempt number (attemptCount + 1)
+    } else {
+      // No normal attempt exists - this will be the first attempt (in quiz mode)
+      // This is allowed
+    }
+    
+    // Create a new test attempt for quiz room
     testAttempt = await createTestAttemptForRoom(userId, quizRoom.testId._id);
   } else {
     // Create a virtual test attempt for custom questions
@@ -443,17 +467,21 @@ const getUserAttempt = async (roomCode, userId) => {
     roomId: quizRoom._id,
     userId,
   })
-    .populate('attemptId')
     .populate('userId', 'name email');
 
   if (!quizRoomAttempt) {
     throw new AppError('Attempt not found', HTTP_STATUS.NOT_FOUND);
   }
 
+  // Get attemptId as string (handle both ObjectId and string cases)
+  const attemptIdString = quizRoomAttempt.attemptId 
+    ? (quizRoomAttempt.attemptId._id ? quizRoomAttempt.attemptId._id.toString() : quizRoomAttempt.attemptId.toString())
+    : null;
+
   // Check if the underlying test attempt is completed
-  if (quizRoomAttempt.attemptId) {
+  if (attemptIdString) {
     const TestAttempt = require('../models/TestAttempt');
-    const testAttempt = await TestAttempt.findById(quizRoomAttempt.attemptId);
+    const testAttempt = await TestAttempt.findById(attemptIdString);
     if (testAttempt && testAttempt.status === 'completed') {
       // Mark quiz room attempt as submitted if test attempt is completed
       if (!quizRoomAttempt.submittedAt) {
@@ -463,7 +491,11 @@ const getUserAttempt = async (roomCode, userId) => {
     }
   }
 
-  return quizRoomAttempt;
+  // Convert to plain object and ensure attemptId is always a string
+  const attemptData = quizRoomAttempt.toObject();
+  attemptData.attemptId = attemptIdString;
+
+  return attemptData;
 };
 
 /**

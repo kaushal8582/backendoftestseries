@@ -118,6 +118,15 @@ const questionSchema = new mongoose.Schema(
       type: String,
       trim: true,
     },
+    // Explanation images
+    explanationImageEnglish: {
+      type: String, // URL from Cloudinary
+      trim: true,
+    },
+    explanationImageHindi: {
+      type: String, // URL from Cloudinary
+      trim: true,
+    },
     // Solution (detailed solution for both languages)
     solution: {
       english: {
@@ -128,6 +137,15 @@ const questionSchema = new mongoose.Schema(
         type: String,
         trim: true,
       },
+    },
+    // Solution images
+    solutionImageEnglish: {
+      type: String, // URL from Cloudinary
+      trim: true,
+    },
+    solutionImageHindi: {
+      type: String, // URL from Cloudinary
+      trim: true,
     },
     marks: {
       type: Number,

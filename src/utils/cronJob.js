@@ -49,6 +49,13 @@ const setSocketIO = (io) => {
 };
 
 /**
+ * Get socket.io instance (for use in services/controllers)
+ */
+const getSocketIO = () => {
+  return ioInstance;
+};
+
+/**
  * Auto-start quiz rooms cron job
  * Runs every minute to check and start rooms when their start time arrives
  */
@@ -143,5 +150,6 @@ module.exports = {
   startQuizRoomAutoStartCron,
   startQuizRoomAutoEndCron,
   setSocketIO,
+  getSocketIO,
 };
 

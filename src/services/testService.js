@@ -42,10 +42,15 @@ const createTest = async (testData) => {
  * @returns {Promise<Object>} - Tests with pagination
  */
 const getTests = async (examId, queryParams = {}) => {
-  const { page = 1, limit = 10, tabId } = queryParams;
+  const { page = 1, limit = 10, tabId, includeInactive } = queryParams;
   const skip = (page - 1) * limit;
 
-  const query = { examId, isActive: true };
+  const query = { examId };
+  
+  // Filter by isActive unless includeInactive is true (for admin panel)
+  if (!includeInactive) {
+    query.isActive = true;
+  }
   
   // Filter by tabId if provided
   if (tabId) {

@@ -97,6 +97,50 @@ const createQuestion = async (req, res, next) => {
           }
         }
       }
+      
+      // Explanation and Solution images
+      const reuseEnglishResultImages = req.body.reuseEnglishResultImages === 'true' || req.body.reuseEnglishResultImages === true;
+      
+      // Explanation image (English)
+      if (req.files.explanationImageEnglish && req.files.explanationImageEnglish[0]) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.files.explanationImageEnglish[0].path);
+        if (cloudinaryResponse) {
+          questionData.explanationImageEnglish = cloudinaryResponse.secure_url;
+        }
+      }
+      
+      // Solution image (English)
+      if (req.files.solutionImageEnglish && req.files.solutionImageEnglish[0]) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.files.solutionImageEnglish[0].path);
+        if (cloudinaryResponse) {
+          questionData.solutionImageEnglish = cloudinaryResponse.secure_url;
+        }
+      }
+      
+      // Explanation and Solution images (Hindi)
+      if (reuseEnglishResultImages) {
+        // Copy English images to Hindi
+        if (questionData.explanationImageEnglish) {
+          questionData.explanationImageHindi = questionData.explanationImageEnglish;
+        }
+        if (questionData.solutionImageEnglish) {
+          questionData.solutionImageHindi = questionData.solutionImageEnglish;
+        }
+      } else {
+        // Upload Hindi images separately
+        if (req.files.explanationImageHindi && req.files.explanationImageHindi[0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files.explanationImageHindi[0].path);
+          if (cloudinaryResponse) {
+            questionData.explanationImageHindi = cloudinaryResponse.secure_url;
+          }
+        }
+        if (req.files.solutionImageHindi && req.files.solutionImageHindi[0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files.solutionImageHindi[0].path);
+          if (cloudinaryResponse) {
+            questionData.solutionImageHindi = cloudinaryResponse.secure_url;
+          }
+        }
+      }
     }
     
     const question = await questionService.createQuestion(questionData);
@@ -295,15 +339,80 @@ const updateQuestion = async (req, res, next) => {
           }
         }
       }
+      
+      // Explanation and Solution images
+      const reuseEnglishResultImages = req.body.reuseEnglishResultImages === 'true' || req.body.reuseEnglishResultImages === true;
+      
+      // Preserve existing images if not being updated
+      questionData.explanationImageEnglish = existingQuestion.explanationImageEnglish;
+      questionData.solutionImageEnglish = existingQuestion.solutionImageEnglish;
+      questionData.explanationImageHindi = existingQuestion.explanationImageHindi;
+      questionData.solutionImageHindi = existingQuestion.solutionImageHindi;
+      
+      // Explanation image (English)
+      if (req.files.explanationImageEnglish && req.files.explanationImageEnglish[0]) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.files.explanationImageEnglish[0].path);
+        if (cloudinaryResponse) {
+          questionData.explanationImageEnglish = cloudinaryResponse.secure_url;
+        }
+      }
+      
+      // Solution image (English)
+      if (req.files.solutionImageEnglish && req.files.solutionImageEnglish[0]) {
+        const cloudinaryResponse = await uploadOnCloudinary(req.files.solutionImageEnglish[0].path);
+        if (cloudinaryResponse) {
+          questionData.solutionImageEnglish = cloudinaryResponse.secure_url;
+        }
+      }
+      
+      // Explanation and Solution images (Hindi)
+      if (reuseEnglishResultImages) {
+        // Copy English images to Hindi
+        if (questionData.explanationImageEnglish) {
+          questionData.explanationImageHindi = questionData.explanationImageEnglish;
+        }
+        if (questionData.solutionImageEnglish) {
+          questionData.solutionImageHindi = questionData.solutionImageEnglish;
+        }
+      } else {
+        // Upload Hindi images separately
+        if (req.files.explanationImageHindi && req.files.explanationImageHindi[0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files.explanationImageHindi[0].path);
+          if (cloudinaryResponse) {
+            questionData.explanationImageHindi = cloudinaryResponse.secure_url;
+          }
+        }
+        if (req.files.solutionImageHindi && req.files.solutionImageHindi[0]) {
+          const cloudinaryResponse = await uploadOnCloudinary(req.files.solutionImageHindi[0].path);
+          if (cloudinaryResponse) {
+            questionData.solutionImageHindi = cloudinaryResponse.secure_url;
+          }
+        }
+      }
     } else {
       // No new files, preserve existing images
       questionData.optionImages = existingQuestion.optionImages || {};
       questionData.optionImagesHindi = existingQuestion.optionImagesHindi || {};
+      questionData.explanationImageEnglish = existingQuestion.explanationImageEnglish;
+      questionData.solutionImageEnglish = existingQuestion.solutionImageEnglish;
+      questionData.explanationImageHindi = existingQuestion.explanationImageHindi;
+      questionData.solutionImageHindi = existingQuestion.solutionImageHindi;
       
       // Handle reuseEnglishImages flag even without new files
       const reuseEnglishImages = req.body.reuseEnglishImages === 'true' || req.body.reuseEnglishImages === true;
       if (reuseEnglishImages) {
         questionData.optionImagesHindi = { ...questionData.optionImages };
+      }
+      
+      // Handle reuseEnglishResultImages flag even without new files
+      const reuseEnglishResultImages = req.body.reuseEnglishResultImages === 'true' || req.body.reuseEnglishResultImages === true;
+      if (reuseEnglishResultImages) {
+        if (questionData.explanationImageEnglish) {
+          questionData.explanationImageHindi = questionData.explanationImageEnglish;
+        }
+        if (questionData.solutionImageEnglish) {
+          questionData.solutionImageHindi = questionData.solutionImageEnglish;
+        }
       }
     }
     

@@ -1,7 +1,11 @@
 const QuizRoom = require('../models/QuizRoom');
 const QuizRoomAttempt = require('../models/QuizRoomAttempt');
 
-module.exports = (io) => {
+// Store io instance for helper functions
+let ioInstance = null;
+
+const initSocketHandlers = (io) => {
+  ioInstance = io;
   io.on('connection', (socket) => {
     console.log('User connected:', socket.id);
 
@@ -19,16 +23,26 @@ module.exports = (io) => {
         // Join socket room
         socket.join(roomCode);
         
-        // Emit room update to all in room
+        // Populate participants before emitting
+        const populatedRoom = await QuizRoom.findOne({ roomCode })
+          .populate('participants.userId', 'name email profilePicture');
+        
+        // Emit room update to all in room with full participant data
         io.to(roomCode).emit('room-update', {
-          participantsCount: quizRoom.participants.length,
-          status: quizRoom.status,
+          participantsCount: populatedRoom.participants.length,
+          status: populatedRoom.status,
           roomCode,
+          participants: populatedRoom.participants.map(p => ({
+            userId: p.userId?._id || p.userId,
+            userName: p.userId?.name || p.userId?.email || null,
+            userEmail: p.userId?.email || null,
+            joinedAt: p.joinedAt,
+          })),
         });
 
         socket.emit('joined-room', {
           roomCode,
-          room: quizRoom,
+          room: populatedRoom,
         });
       } catch (error) {
         console.error('Error joining room:', error);
@@ -126,15 +140,23 @@ module.exports = (io) => {
       const { roomCode } = data;
       
       try {
-        const quizRoom = await QuizRoom.findOne({ roomCode });
+        const quizRoom = await QuizRoom.findOne({ roomCode })
+          .populate('participants.userId', 'name email profilePicture');
+        
         if (!quizRoom) {
           return;
         }
 
-        // Broadcast to all except sender
-        socket.to(roomCode).emit('participant-update', {
+        // Broadcast to all in room with full participant list
+        io.to(roomCode).emit('participant-update', {
           roomCode,
           participantsCount: quizRoom.participants.length,
+          participants: quizRoom.participants.map(p => ({
+            userId: p.userId?._id || p.userId,
+            userName: p.userId?.name || p.userId?.email || null,
+            userEmail: p.userId?.email || null,
+            joinedAt: p.joinedAt,
+          })),
           message: 'A new participant joined',
         });
       } catch (error) {
@@ -163,26 +185,40 @@ module.exports = (io) => {
       console.log('User disconnected:', socket.id);
     });
   });
-
-  // Helper function to broadcast room updates
-  const broadcastRoomUpdate = async (roomCode) => {
-    try {
-      const quizRoom = await QuizRoom.findOne({ roomCode });
-      if (!quizRoom) {
-        return;
-      }
-
-      io.to(roomCode).emit('room-update', {
-        participantsCount: quizRoom.participants.length,
-        status: quizRoom.status,
-        roomCode,
-      });
-    } catch (error) {
-      console.error('Error broadcasting room update:', error);
-    }
-  };
-
-  // Export helper for use in other files
-  module.exports.broadcastRoomUpdate = broadcastRoomUpdate;
 };
+
+// Helper function to broadcast room updates (exported separately)
+const broadcastRoomUpdate = async (roomCode) => {
+  if (!ioInstance) {
+    console.error('Socket IO instance not initialized');
+    return;
+  }
+  
+  try {
+    const quizRoom = await QuizRoom.findOne({ roomCode })
+      .populate('participants.userId', 'name email profilePicture');
+    
+    if (!quizRoom) {
+      return;
+    }
+
+    ioInstance.to(roomCode).emit('room-update', {
+      participantsCount: quizRoom.participants.length,
+      status: quizRoom.status,
+      roomCode,
+      participants: quizRoom.participants.map(p => ({
+        userId: p.userId?._id || p.userId,
+        userName: p.userId?.name || p.userId?.email || null,
+        userEmail: p.userId?.email || null,
+        joinedAt: p.joinedAt,
+      })),
+    });
+  } catch (error) {
+    console.error('Error broadcasting room update:', error);
+  }
+};
+
+// Export the main function and helper
+module.exports = initSocketHandlers;
+module.exports.broadcastRoomUpdate = broadcastRoomUpdate;
 
