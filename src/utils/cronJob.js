@@ -1,7 +1,8 @@
 const cron = require('node-cron');
 const axios = require('axios');
 const QuizRoom = require('../models/QuizRoom');
-const quizRoomService = require('../services/quizRoomService');
+// Don't import quizRoomService at top level to avoid circular dependency
+// const quizRoomService = require('../services/quizRoomService');
 const quizRoomAttemptService = require('../services/quizRoomAttemptService');
 
 const BACKEND_URL = 'https://backendoftestseries.onrender.com';
@@ -129,7 +130,8 @@ const startQuizRoomAutoEndCron = () => {
           // Auto-submit all pending attempts
           await quizRoomAttemptService.autoSubmitAllAttempts(room.roomCode);
           
-          // End the room
+          // End the room - use require inside to avoid circular dependency
+          const quizRoomService = require('../services/quizRoomService');
           await quizRoomService.endRoom(room.roomCode);
           
           console.log(`[${new Date().toISOString()}] Auto-ended room: ${room.roomCode}`);
