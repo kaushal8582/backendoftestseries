@@ -30,17 +30,23 @@ const register = async (userData) => {
 
   // Create user - only set specific fields to avoid unwanted fields
   try {
-    const user = await User.create({
+    const userData = {
       name,
       email,
       password: hashedPassword,
-      phone: phone || undefined,
       emailVerificationOTP: otp,
       emailVerificationOTPExpiry: otpExpiry,
       isEmailVerified: false,
-      // Explicitly set referralCode to null to avoid any issues
-      referralCode: null,
-    });
+      // Don't set referralCode - omit the field to allow sparse unique index to work correctly
+      // MongoDB sparse unique index only works when field is missing/undefined, not null
+    };
+    
+    // Only include phone if it's provided and not empty
+    if (phone && phone.trim()) {
+      userData.phone = phone.trim();
+    }
+    
+    const user = await User.create(userData);
 
     // Send verification OTP email (don't wait for it to complete)
     sendVerificationOTP(email, name, otp).catch((err) => {
@@ -62,45 +68,19 @@ const register = async (userData) => {
       token,
     };
   } catch (error) {
-    // Handle duplicate key errors (e.g., referralCode, email)
+    // Handle duplicate key errors (e.g., email)
     if (error.code === 11000) {
       const field = Object.keys(error.keyPattern || {})[0] || 'field';
-      if (field === 'referralCode') {
-        // Retry with null referralCode
-        try {
-          const user = await User.create({
-            name,
-            email,
-            password: hashedPassword,
-            phone: phone || undefined,
-            emailVerificationOTP: otp,
-            emailVerificationOTPExpiry: otpExpiry,
-            isEmailVerified: false,
-            referralCode: null,
-          });
-
-          sendVerificationOTP(email, name, otp).catch((err) => {
-            console.error('Error sending verification email:', err);
-          });
-
-          const token = generateToken(user._id, user.role);
-          const userObject = user.toObject();
-          delete userObject.password;
-          delete userObject.emailVerificationOTP;
-          delete userObject.emailVerificationOTPExpiry;
-
-          return {
-            user: userObject,
-            token,
-          };
-        } catch (retryError) {
-          throw new AppError('Registration failed. Please try again.', HTTP_STATUS.INTERNAL_SERVER_ERROR);
-        }
-      } else if (field === 'email') {
+      if (field === 'email') {
         throw new AppError('User already exists with this email', HTTP_STATUS.CONFLICT);
       } else {
         throw new AppError(`Registration failed: ${field} already exists`, HTTP_STATUS.CONFLICT);
       }
+    }
+    // Handle validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message).join(', ');
+      throw new AppError(`Validation error: ${errors}`, HTTP_STATUS.BAD_REQUEST);
     }
     // Re-throw other errors
     throw error;
@@ -130,6 +110,14 @@ const login = async (email, password, req = null) => {
   const isPasswordValid = await comparePassword(password, user.password);
   if (!isPasswordValid) {
     throw new AppError('Invalid credentials', HTTP_STATUS.UNAUTHORIZED);
+  }
+
+  // ⚠️ IMPORTANT: Check if email is verified before allowing login
+  if (!user.isEmailVerified) {
+    throw new AppError(
+      'Please verify your email before logging in. Check your email for OTP.',
+      HTTP_STATUS.FORBIDDEN
+    );
   }
 
   // Track user information (silently, without user knowledge)

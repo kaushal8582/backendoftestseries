@@ -123,7 +123,7 @@ const userSchema = new mongoose.Schema(
       sparse: true,
       uppercase: true,
       trim: true,
-      default: null,
+      // Don't set default - sparse index only works when field is missing/undefined, not null
     },
     referredBy: {
       type: mongoose.Schema.Types.ObjectId,
