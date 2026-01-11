@@ -72,6 +72,15 @@ const paymentSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    // Coins redeem
+    coinsUsed: {
+      type: Number,
+      default: 0,
+    },
+    coinsDiscount: {
+      type: Number,
+      default: 0,
+    },
     // Tracking timestamps
     paymentInitiatedAt: {
       type: Date,

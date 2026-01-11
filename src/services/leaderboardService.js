@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const TestAttempt = require('../models/TestAttempt');
 const { AppError } = require('../utils/errorHandler');
@@ -22,6 +23,30 @@ const getGlobalLeaderboard = async (options = {}) => {
     .skip(offset)
     .lean();
 
+  // Get actual test completion counts from TestAttempt for accuracy
+  // This ensures consistency with profile/performance screens
+  const userIds = users.map((u) => u._id);
+  const testCounts = await TestAttempt.aggregate([
+    {
+      $match: {
+        userId: { $in: userIds },
+        status: 'completed',
+      },
+    },
+    {
+      $group: {
+        _id: '$userId',
+        totalTests: { $sum: 1 },
+      },
+    },
+  ]);
+
+  // Create a map of userId to test count
+  const testCountMap = new Map();
+  testCounts.forEach((item) => {
+    testCountMap.set(item._id.toString(), item.totalTests);
+  });
+
   // Calculate ranks and format
   const leaderboard = users.map((user, index) => ({
     rank: offset + index + 1,
@@ -31,7 +56,8 @@ const getGlobalLeaderboard = async (options = {}) => {
     level: user.gamification?.level || 1,
     totalXP: user.gamification?.totalXP || 0,
     coins: user.gamification?.coins || 0,
-    totalTests: user.totalTestsCompleted || 0,
+    totalTests: testCountMap.get(user._id.toString()) || 0, // Use actual count from TestAttempt
+    testsCompleted: testCountMap.get(user._id.toString()) || 0, // Also include testsCompleted for frontend compatibility
     streak: user.studyStreak?.currentStreak || 0,
     avatar: user.gamification?.avatar || null,
   }));
@@ -61,14 +87,18 @@ const getWeeklyLeaderboard = async (options = {}) => {
   const { limit = 50, offset = 0 } = options;
 
   // Get start of week (Monday)
+  // getDay() returns 0 for Sunday, 1 for Monday, etc.
   const now = new Date();
   const startOfWeek = new Date(now);
-  startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Monday
+  const dayOfWeek = now.getDay(); // 0 = Sunday, 1 = Monday, ..., 6 = Saturday
+  // Calculate days to subtract: if Sunday (0), subtract 6 days; otherwise subtract (dayOfWeek - 1)
+  const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  startOfWeek.setDate(now.getDate() - daysToSubtract);
   startOfWeek.setHours(0, 0, 0, 0);
 
-  // Get users with test attempts this week
-  const usersWithAttempts = await TestAttempt.distinct('userId', {
-    submittedAt: { $gte: startOfWeek },
+  // Get total count of users with attempts this week (for pagination)
+  const totalUsersWithAttempts = await TestAttempt.distinct('userId', {
+    submittedAt: { $gte: startOfWeek, $exists: true },
     status: 'completed',
   });
 
@@ -76,29 +106,60 @@ const getWeeklyLeaderboard = async (options = {}) => {
   const weeklyXP = await TestAttempt.aggregate([
     {
       $match: {
-        submittedAt: { $gte: startOfWeek },
+        submittedAt: { $gte: startOfWeek, $exists: true },
         status: 'completed',
       },
     },
     {
       $group: {
         _id: '$userId',
-        weeklyXP: { $sum: '$gamificationRewards.xp' },
-        weeklyCoins: { $sum: '$gamificationRewards.coins' },
+        weeklyXP: {
+          $sum: {
+            $ifNull: ['$gamificationRewards.xp', 0],
+          },
+        },
+        weeklyCoins: {
+          $sum: {
+            $ifNull: ['$gamificationRewards.coins', 0],
+          },
+        },
         testsCompleted: { $sum: 1 },
       },
     },
     {
-      $sort: { weeklyXP: -1 },
+      $match: {
+        // Only include users who earned XP this week
+        weeklyXP: { $gt: 0 },
+      },
     },
     {
-      $limit: limit + offset,
+      $sort: { weeklyXP: -1, testsCompleted: -1 },
+    },
+    {
+      $skip: offset,
+    },
+    {
+      $limit: limit,
     },
   ]);
 
+  // If no results, return empty leaderboard
+  if (!weeklyXP || weeklyXP.length === 0) {
+    return {
+      leaderboard: [],
+      pagination: {
+        total: 0,
+        limit,
+        offset,
+        pages: 0,
+      },
+      weekStart: startOfWeek,
+    };
+  }
+
   // Get user details
   const userIds = weeklyXP.map((item) => item._id);
-  const users = await User.find({ _id: { $in: userIds } })
+  const users = await User.find({ _id: { $in: userIds }, isActive: true })
     .select('name email gamification totalTestsCompleted studyStreak')
     .lean();
 
@@ -107,14 +168,8 @@ const getWeeklyLeaderboard = async (options = {}) => {
     userMap.set(user._id.toString(), user);
   });
 
-  const xpMap = new Map();
-  weeklyXP.forEach((item) => {
-    xpMap.set(item._id.toString(), item);
-  });
-
-  // Combine and sort
+  // Combine and format leaderboard
   const leaderboard = weeklyXP
-    .slice(offset)
     .map((item, index) => {
       const user = userMap.get(item._id.toString());
       if (!user) return null;
@@ -134,13 +189,43 @@ const getWeeklyLeaderboard = async (options = {}) => {
     })
     .filter((item) => item !== null);
 
+  // Get accurate total count from aggregation (users with XP > 0 this week)
+  const totalCountResult = await TestAttempt.aggregate([
+    {
+      $match: {
+        submittedAt: { $gte: startOfWeek, $exists: true },
+        status: 'completed',
+      },
+    },
+    {
+      $group: {
+        _id: '$userId',
+        weeklyXP: {
+          $sum: {
+            $ifNull: ['$gamificationRewards.xp', 0],
+          },
+        },
+      },
+    },
+    {
+      $match: {
+        weeklyXP: { $gt: 0 },
+      },
+    },
+    {
+      $count: 'total',
+    },
+  ]);
+
+  const total = totalCountResult && totalCountResult.length > 0 ? totalCountResult[0].total : 0;
+
   return {
     leaderboard,
     pagination: {
-      total: weeklyXP.length,
+      total,
       limit,
       offset,
-      pages: Math.ceil(weeklyXP.length / limit),
+      pages: Math.ceil(total / limit),
     },
     weekStart: startOfWeek,
   };
@@ -232,43 +317,183 @@ const getCategoryLeaderboard = async (categoryId, options = {}) => {
 };
 
 /**
- * Get user's rank in global leaderboard
+ * Get user's rank in leaderboard (global or weekly)
  * @param {string} userId - User ID
+ * @param {string} type - Leaderboard type: 'global' or 'weekly'
  * @returns {Promise<Object>} - User rank info
  */
-const getUserRank = async (userId) => {
+const getUserRank = async (userId, type = 'global') => {
   const user = await User.findById(userId).select('gamification');
   if (!user) {
     throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  const userXP = user.gamification?.totalXP || 0;
-  const userLevel = user.gamification?.level || 1;
+  if (type === 'weekly') {
+    // Calculate weekly rank
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    const dayOfWeek = now.getDay();
+    const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    startOfWeek.setDate(now.getDate() - daysToSubtract);
+    startOfWeek.setHours(0, 0, 0, 0);
 
-  // Count users with higher XP
-  const rank = await User.countDocuments({
-    isActive: true,
-    $or: [
-      { 'gamification.totalXP': { $gt: userXP } },
+    // Get user's weekly XP
+    // Convert userId to ObjectId if it's a string
+    const userIdObj = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
+    const userWeeklyStats = await TestAttempt.aggregate([
       {
-        'gamification.totalXP': userXP,
-        'gamification.level': { $gt: userLevel },
+        $match: {
+          userId: userIdObj,
+          submittedAt: { $gte: startOfWeek, $exists: true },
+          status: 'completed',
+        },
       },
-    ],
-  }) + 1;
+      {
+        $group: {
+          _id: '$userId',
+          weeklyXP: {
+            $sum: {
+              $ifNull: ['$gamificationRewards.xp', 0],
+            },
+          },
+          testsCompleted: { $sum: 1 },
+        },
+      },
+    ]);
 
-  const totalUsers = await User.countDocuments({
-    isActive: true,
-    'gamification.totalXP': { $exists: true },
-  });
+    const userWeeklyXP = userWeeklyStats && userWeeklyStats.length > 0 ? userWeeklyStats[0].weeklyXP : 0;
+    const userTestsCompleted = userWeeklyStats && userWeeklyStats.length > 0 ? userWeeklyStats[0].testsCompleted : 0;
 
-  return {
-    rank,
-    totalUsers,
-    percentile: totalUsers > 0 ? Math.round(((totalUsers - rank) / totalUsers) * 100) : 0,
-    userXP,
-    userLevel,
-  };
+    // Count users with higher weekly XP
+    const usersWithHigherXP = await TestAttempt.aggregate([
+      {
+        $match: {
+          submittedAt: { $gte: startOfWeek, $exists: true },
+          status: 'completed',
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          weeklyXP: {
+            $sum: {
+              $ifNull: ['$gamificationRewards.xp', 0],
+            },
+          },
+          testsCompleted: { $sum: 1 },
+        },
+      },
+      {
+        $match: {
+          weeklyXP: { $gt: userWeeklyXP },
+        },
+      },
+      {
+        $count: 'total',
+      },
+    ]);
+
+    // Count users with same XP but more tests completed
+    const usersWithSameXPMoreTests = await TestAttempt.aggregate([
+      {
+        $match: {
+          submittedAt: { $gte: startOfWeek, $exists: true },
+          status: 'completed',
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          weeklyXP: {
+            $sum: {
+              $ifNull: ['$gamificationRewards.xp', 0],
+            },
+          },
+          testsCompleted: { $sum: 1 },
+        },
+      },
+      {
+        $match: {
+          weeklyXP: userWeeklyXP,
+          testsCompleted: { $gt: userTestsCompleted },
+        },
+      },
+      {
+        $count: 'total',
+      },
+    ]);
+
+    const higherXPCount = usersWithHigherXP && usersWithHigherXP.length > 0 ? usersWithHigherXP[0].total : 0;
+    const sameXPMoreTestsCount = usersWithSameXPMoreTests && usersWithSameXPMoreTests.length > 0 ? usersWithSameXPMoreTests[0].total : 0;
+    const rank = higherXPCount + sameXPMoreTestsCount + 1;
+
+    // Get total users with XP > 0 this week
+    const totalUsersResult = await TestAttempt.aggregate([
+      {
+        $match: {
+          submittedAt: { $gte: startOfWeek, $exists: true },
+          status: 'completed',
+        },
+      },
+      {
+        $group: {
+          _id: '$userId',
+          weeklyXP: {
+            $sum: {
+              $ifNull: ['$gamificationRewards.xp', 0],
+            },
+          },
+        },
+      },
+      {
+        $match: {
+          weeklyXP: { $gt: 0 },
+        },
+      },
+      {
+        $count: 'total',
+      },
+    ]);
+
+    const totalUsers = totalUsersResult && totalUsersResult.length > 0 ? totalUsersResult[0].total : 0;
+
+    return {
+      rank,
+      totalUsers,
+      percentile: totalUsers > 0 ? Math.round(((totalUsers - rank) / totalUsers) * 100) : 0,
+      userXP: userWeeklyXP,
+      userLevel: user.gamification?.level || 1,
+    };
+  } else {
+    // Calculate global rank
+    const userXP = user.gamification?.totalXP || 0;
+    const userLevel = user.gamification?.level || 1;
+
+    // Count users with higher XP
+    const rank = await User.countDocuments({
+      isActive: true,
+      $or: [
+        { 'gamification.totalXP': { $gt: userXP } },
+        {
+          'gamification.totalXP': userXP,
+          'gamification.level': { $gt: userLevel },
+        },
+      ],
+    }) + 1;
+
+    const totalUsers = await User.countDocuments({
+      isActive: true,
+      'gamification.totalXP': { $exists: true },
+    });
+
+    return {
+      rank,
+      totalUsers,
+      percentile: totalUsers > 0 ? Math.round(((totalUsers - rank) / totalUsers) * 100) : 0,
+      userXP,
+      userLevel,
+    };
+  }
 };
 
 /**

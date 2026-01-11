@@ -7,7 +7,7 @@ const { HTTP_STATUS } = require('../config/constants');
  */
 const createPaymentOrder = async (req, res, next) => {
   try {
-    const { planId, promoCode, referralCode } = req.body;
+    const { planId, promoCode, referralCode, coinsToRedeem } = req.body;
     const userId = req.user._id;
 
     const result = await paymentService.createPaymentOrder({
@@ -15,6 +15,7 @@ const createPaymentOrder = async (req, res, next) => {
       planId,
       promoCode,
       referralCode,
+      coinsToRedeem,
     });
 
     res.status(HTTP_STATUS.CREATED).json({

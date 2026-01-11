@@ -102,6 +102,8 @@ const getUserPerformanceSummary = async (userId) => {
   }
 
   // Get additional stats from test attempts
+  // Count ALL completed attempts (including quiz room and daily challenge attempts)
+  // This ensures consistency with leaderboard calculations
   const completedAttempts = await TestAttempt.find({
     userId,
     status: 'completed',
@@ -127,10 +129,17 @@ const getUserPerformanceSummary = async (userId) => {
     ? parseFloat(((totalCorrect / totalQuestions) * 100).toFixed(2))
     : 0;
 
+  // Always use actual count from TestAttempt documents for consistency
+  // This ensures the count matches what's shown in the leaderboard
+  const actualTestsCompleted = completedAttempts.length;
+  const averageScore = actualTestsCompleted > 0 
+    ? parseFloat((totalScore / actualTestsCompleted).toFixed(2))
+    : 0;
+
   return {
     totalTestsAttempted: user.totalTestsAttempted || 0,
-    totalTestsCompleted: user.totalTestsCompleted || completedAttempts.length,
-    averageScore: user.averageScore || 0,
+    totalTestsCompleted: actualTestsCompleted, // Always use actual count from TestAttempt documents
+    averageScore: averageScore || user.averageScore || 0,
     totalScore,
     totalCorrect,
     totalWrong,

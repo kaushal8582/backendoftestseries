@@ -74,12 +74,13 @@ const getCategoryLeaderboardHandler = async (req, res, next) => {
 
 /**
  * @route   GET /api/leaderboard/my-rank
- * @desc    Get user's rank
+ * @desc    Get user's rank (global or weekly based on type query param)
  * @access  Private
  */
 const getMyRankHandler = async (req, res, next) => {
   try {
-    const rankInfo = await getUserRank(req.user._id);
+    const { type = 'global' } = req.query; // 'global' or 'weekly'
+    const rankInfo = await getUserRank(req.user._id, type);
     res.status(HTTP_STATUS.OK).json({
       success: true,
       data: rankInfo,

@@ -8,6 +8,7 @@ const { HTTP_STATUS } = require('../config/constants');
 const subscriptionService = require('./subscriptionService');
 const promoCodeService = require('./promoCodeService');
 const referralService = require('./referralService');
+const { sendPaymentReceipt } = require('../utils/email');
 
 /**
  * Create payment order (initiate payment)
@@ -15,7 +16,7 @@ const referralService = require('./referralService');
  * @returns {Promise<Object>} - Payment order details
  */
 const createPaymentOrder = async (paymentData) => {
-  const { userId, planId, promoCode, referralCode } = paymentData;
+  const { userId, planId, promoCode, referralCode, coinsToRedeem } = paymentData;
 
   // Get plan
   const plan = await SubscriptionPlan.findById(planId);
@@ -23,11 +24,19 @@ const createPaymentOrder = async (paymentData) => {
     throw new AppError('Subscription plan not found', HTTP_STATUS.NOT_FOUND);
   }
 
+  // Get user to check coins balance
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new AppError('User not found', HTTP_STATUS.NOT_FOUND);
+  }
+
   // Calculate base amount (in paise)
   let amount = Math.round(plan.price * 100);
   let discountAmount = 0;
   let promoCodeId = null;
   let referralDiscount = 0;
+  let coinsDiscount = 0;
+  let coinsUsed = 0;
 
   // Apply promo code if provided
   if (promoCode) {
@@ -42,6 +51,31 @@ const createPaymentOrder = async (paymentData) => {
     const referralResult = await referralService.applyReferralCode(referralCode, userId, amount);
     referralDiscount = referralResult.discount;
     amount = referralResult.finalAmount;
+  }
+
+  // Apply coins redeem if provided
+  // 1000 coins = 1 rupee, max 30% of subscription amount
+  if (coinsToRedeem && coinsToRedeem > 0) {
+    const userCoins = user.gamification?.coins || 0;
+    const maxCoinsDiscount = Math.floor((amount * 30) / 100); // 30% of amount in paise
+    const maxCoinsCanUse = Math.floor(maxCoinsDiscount / 10); // 1000 coins = 10 paise (1 rupee = 100 paise, so 1000 coins = 100 paise = 10 paise per 100 coins)
+    
+    // Calculate: coinsToRedeem * 10 paise (since 1000 coins = 100 paise = 1 rupee)
+    // But coinsToRedeem is in coins, so we need to convert: coinsToRedeem coins = (coinsToRedeem / 1000) * 100 paise
+    const coinsDiscountInPaise = Math.floor((coinsToRedeem / 1000) * 100);
+    
+    // Validate: user has enough coins and discount doesn't exceed 30%
+    if (coinsToRedeem > userCoins) {
+      throw new AppError(`Insufficient coins. You have ${userCoins} coins, but trying to redeem ${coinsToRedeem} coins.`, HTTP_STATUS.BAD_REQUEST);
+    }
+    
+    if (coinsDiscountInPaise > maxCoinsDiscount) {
+      throw new AppError(`Coins discount cannot exceed 30% of subscription amount. Maximum coins you can use: ${Math.floor(maxCoinsDiscount / 10) * 100}.`, HTTP_STATUS.BAD_REQUEST);
+    }
+    
+    coinsDiscount = coinsDiscountInPaise;
+    coinsUsed = coinsToRedeem;
+    amount = Math.max(0, amount - coinsDiscount); // Ensure amount doesn't go negative
   }
 
   // Get user's payment attempt count for this plan
@@ -60,6 +94,8 @@ const createPaymentOrder = async (paymentData) => {
     finalAmount: amount / 100, // Convert back to rupees
     discountAmount: discountAmount / 100,
     referralDiscount: referralDiscount / 100,
+    coinsDiscount: coinsDiscount / 100,
+    coinsUsed: coinsUsed || 0,
     promoCodeId,
     referralCode,
     paymentStatus: 'initiated',
@@ -193,6 +229,28 @@ const verifyAndProcessPayment = async (webhookData) => {
     payment.paymentStatus = 'success';
     payment.paymentCompletedAt = new Date();
 
+    // Deduct coins if used for payment (only if payment has coinsUsed)
+    if (payment.coinsUsed && payment.coinsUsed > 0) {
+      const user = await User.findById(payment.userId);
+      if (user && user.gamification) {
+        const currentCoins = user.gamification.coins || 0;
+        if (currentCoins >= payment.coinsUsed) {
+          user.gamification.coins = currentCoins - payment.coinsUsed;
+          user.gamification.totalCoinsSpent = (user.gamification.totalCoinsSpent || 0) + payment.coinsUsed;
+          await user.save();
+          console.log('💰 [PAYMENT SERVICE] Deducted coins:', {
+            coinsUsed: payment.coinsUsed,
+            remainingCoins: user.gamification.coins,
+          });
+        } else {
+          console.warn('💰 [PAYMENT SERVICE] User coins insufficient, but payment already successful:', {
+            currentCoins,
+            coinsUsed: payment.coinsUsed,
+          });
+        }
+      }
+    }
+
     // Create subscription
     const subscription = await subscriptionService.createSubscription({
       userId: payment.userId,
@@ -221,6 +279,49 @@ const verifyAndProcessPayment = async (webhookData) => {
     if (payment.referralCode) {
       console.log('💰 [PAYMENT SERVICE] Processing referral:', payment.referralCode);
       await referralService.processReferral(payment.userId, payment.referralCode, payment._id);
+    }
+
+    // Send payment receipt email
+    try {
+      // Populate payment details for receipt
+      const populatedPayment = await Payment.findById(payment._id)
+        .populate('subscriptionPlanId', 'name durationLabel')
+        .populate('userId', 'name email')
+        .lean();
+
+      if (populatedPayment && populatedPayment.userId && populatedPayment.subscriptionPlanId) {
+        const user = populatedPayment.userId;
+        const plan = populatedPayment.subscriptionPlanId;
+        
+        // Original amount is stored in payment.amount (plan price before discounts)
+        const originalAmount = payment.amount || plan.price || 0;
+
+        await sendPaymentReceipt({
+          email: user.email,
+          name: user.name,
+          planName: plan.name,
+          planDuration: plan.durationLabel || `${plan.duration} days`,
+          originalAmount: originalAmount,
+          promoCodeDiscount: payment.discountAmount || 0,
+          referralDiscount: payment.referralDiscount || 0,
+          coinsUsed: payment.coinsUsed || 0,
+          coinsDiscount: payment.coinsDiscount || 0,
+          finalAmount: payment.finalAmount,
+          paymentId: payment.razorpayPaymentId || payment._id.toString(),
+          orderId: payment.razorpayOrderId || 'N/A',
+          paymentDate: payment.paymentCompletedAt || payment.createdAt,
+          subscriptionStartDate: subscription.startDate,
+          subscriptionEndDate: subscription.endDate,
+          paymentMethod: payment.paymentMethod || 'Razorpay',
+        });
+
+        console.log('💰 [PAYMENT SERVICE] Payment receipt email sent successfully');
+      } else {
+        console.warn('💰 [PAYMENT SERVICE] Could not send receipt email - missing payment/user/plan data');
+      }
+    } catch (emailError) {
+      // Don't fail payment if email fails
+      console.error('💰 [PAYMENT SERVICE] Error sending payment receipt email:', emailError);
     }
 
     console.log('💰 [PAYMENT SERVICE] Payment processing completed successfully');
