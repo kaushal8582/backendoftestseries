@@ -116,13 +116,27 @@ const trackPaymentClick = async (paymentId) => {
  * @returns {Promise<Object>} - Updated payment and subscription
  */
 const verifyAndProcessPayment = async (webhookData) => {
+  console.log('💰 [PAYMENT SERVICE] Processing payment webhook:', {
+    order_id: webhookData.order_id,
+    payment_id: webhookData.payment_id,
+    status: webhookData.status,
+  });
+
   const { order_id, payment_id, signature, status } = webhookData;
 
   // Find payment by Razorpay order ID
   const payment = await Payment.findOne({ razorpayOrderId: order_id });
   if (!payment) {
+    console.error('💰 [PAYMENT SERVICE] Payment not found for order_id:', order_id);
     throw new AppError('Payment not found', HTTP_STATUS.NOT_FOUND);
   }
+
+  console.log('💰 [PAYMENT SERVICE] Payment found:', {
+    paymentId: payment._id,
+    userId: payment.userId,
+    planId: payment.subscriptionPlanId,
+    currentStatus: payment.paymentStatus,
+  });
 
   // Update payment with Razorpay details
   payment.razorpayPaymentId = payment_id;
@@ -130,6 +144,7 @@ const verifyAndProcessPayment = async (webhookData) => {
   payment.webhookData = webhookData;
 
   if (status === 'captured' || status === 'authorized') {
+    console.log('💰 [PAYMENT SERVICE] Payment successful, creating subscription...');
     // Payment successful
     payment.paymentStatus = 'success';
     payment.paymentCompletedAt = new Date();
@@ -144,16 +159,30 @@ const verifyAndProcessPayment = async (webhookData) => {
       referralCode: payment.referralCode,
     });
 
+    console.log('💰 [PAYMENT SERVICE] Subscription created:', {
+      subscriptionId: subscription._id,
+      userId: subscription.userId,
+      planId: subscription.planId,
+      status: subscription.status,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+    });
+
     payment.subscriptionId = subscription._id;
     await payment.save();
 
+    console.log('💰 [PAYMENT SERVICE] Payment updated with subscription ID');
+
     // Process referral if applicable
     if (payment.referralCode) {
+      console.log('💰 [PAYMENT SERVICE] Processing referral:', payment.referralCode);
       await referralService.processReferral(payment.userId, payment.referralCode, payment._id);
     }
 
+    console.log('💰 [PAYMENT SERVICE] Payment processing completed successfully');
     return { payment, subscription };
   } else if (status === 'failed') {
+    console.log('💰 [PAYMENT SERVICE] Payment failed');
     // Payment failed
     payment.paymentStatus = 'failed';
     payment.paymentFailedAt = new Date();
@@ -163,6 +192,7 @@ const verifyAndProcessPayment = async (webhookData) => {
     return { payment, subscription: null };
   }
 
+  console.log('💰 [PAYMENT SERVICE] Unknown payment status:', status);
   return { payment, subscription: null };
 };
 

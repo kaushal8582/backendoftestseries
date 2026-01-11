@@ -60,11 +60,19 @@ const trackPaymentClick = async (req, res, next) => {
  */
 const razorpayWebhook = async (req, res, next) => {
   try {
+    console.log('🔔 [WEBHOOK] Webhook received at:', new Date().toISOString());
+    console.log('🔔 [WEBHOOK] Webhook data:', JSON.stringify(req.body, null, 2));
+    
     const webhookData = req.body;
 
     // Verify webhook signature (Razorpay sends signature in headers)
     const razorpaySignature = req.headers['x-razorpay-signature'];
     const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
+
+    console.log('🔔 [WEBHOOK] Signature verification:', {
+      hasSignature: !!razorpaySignature,
+      hasSecret: !!webhookSecret,
+    });
 
     if (razorpaySignature && webhookSecret) {
       const crypto = require('crypto');
@@ -73,7 +81,14 @@ const razorpayWebhook = async (req, res, next) => {
         .update(JSON.stringify(webhookData))
         .digest('hex');
 
+      console.log('🔔 [WEBHOOK] Signature comparison:', {
+        received: razorpaySignature.substring(0, 20) + '...',
+        generated: generatedSignature.substring(0, 20) + '...',
+        match: generatedSignature === razorpaySignature,
+      });
+
       if (generatedSignature !== razorpaySignature) {
+        console.error('🔔 [WEBHOOK] Invalid webhook signature');
         return res.status(HTTP_STATUS.BAD_REQUEST).json({
           success: false,
           error: 'Invalid webhook signature',
@@ -81,8 +96,16 @@ const razorpayWebhook = async (req, res, next) => {
       }
     }
 
+    console.log('🔔 [WEBHOOK] Processing payment...');
     // Process payment
     const { payment, subscription } = await paymentService.verifyAndProcessPayment(webhookData);
+
+    console.log('🔔 [WEBHOOK] Payment processed successfully:', {
+      paymentId: payment?._id,
+      paymentStatus: payment?.paymentStatus,
+      subscriptionId: subscription?._id,
+      subscriptionStatus: subscription?.status,
+    });
 
     res.status(HTTP_STATUS.OK).json({
       success: true,
@@ -90,7 +113,8 @@ const razorpayWebhook = async (req, res, next) => {
       data: { payment, subscription },
     });
   } catch (error) {
-    console.error('Webhook error:', error);
+    console.error('🔔 [WEBHOOK] Error processing webhook:', error);
+    console.error('🔔 [WEBHOOK] Error stack:', error.stack);
     // Still return 200 to Razorpay to prevent retries
     res.status(HTTP_STATUS.OK).json({
       success: false,
