@@ -116,18 +116,60 @@ const trackPaymentClick = async (paymentId) => {
  * @returns {Promise<Object>} - Updated payment and subscription
  */
 const verifyAndProcessPayment = async (webhookData) => {
+  // Razorpay sends webhook data in nested structure
+  // Extract payment data from payload
+  let paymentEntity = null;
+  let order_id = null;
+  let payment_id = null;
+  let status = null;
+  let signature = null;
+
+  // Handle different webhook event structures
+  if (webhookData.payload && webhookData.payload.payment && webhookData.payload.payment.entity) {
+    // Structure: { payload: { payment: { entity: {...} } } }
+    paymentEntity = webhookData.payload.payment.entity;
+    order_id = paymentEntity.order_id;
+    payment_id = paymentEntity.id;
+    status = paymentEntity.status;
+    signature = webhookData.payload.payment.entity.signature || null;
+  } else if (webhookData.entity) {
+    // Direct entity structure (fallback)
+    paymentEntity = webhookData.entity;
+    order_id = paymentEntity.order_id;
+    payment_id = paymentEntity.id;
+    status = paymentEntity.status;
+    signature = paymentEntity.signature || null;
+  } else {
+    // Legacy structure (direct fields)
+    order_id = webhookData.order_id;
+    payment_id = webhookData.payment_id;
+    status = webhookData.status;
+    signature = webhookData.signature || null;
+  }
+
   console.log('💰 [PAYMENT SERVICE] Processing payment webhook:', {
-    order_id: webhookData.order_id,
-    payment_id: webhookData.payment_id,
-    status: webhookData.status,
+    order_id,
+    payment_id,
+    status,
+    event: webhookData.event,
   });
 
-  const { order_id, payment_id, signature, status } = webhookData;
+  if (!order_id) {
+    console.error('💰 [PAYMENT SERVICE] Missing order_id in webhook data');
+    console.error('💰 [PAYMENT SERVICE] Webhook structure:', JSON.stringify(webhookData, null, 2));
+    throw new AppError('Missing order_id in webhook data', HTTP_STATUS.BAD_REQUEST);
+  }
 
   // Find payment by Razorpay order ID
   const payment = await Payment.findOne({ razorpayOrderId: order_id });
   if (!payment) {
     console.error('💰 [PAYMENT SERVICE] Payment not found for order_id:', order_id);
+    // Log recent payments for debugging
+    const recentPayments = await Payment.find({}).select('razorpayOrderId createdAt').sort({ createdAt: -1 }).limit(5);
+    console.error('💰 [PAYMENT SERVICE] Recent payments in DB:', recentPayments.map(p => ({
+      orderId: p.razorpayOrderId,
+      createdAt: p.createdAt
+    })));
     throw new AppError('Payment not found', HTTP_STATUS.NOT_FOUND);
   }
 
@@ -140,7 +182,9 @@ const verifyAndProcessPayment = async (webhookData) => {
 
   // Update payment with Razorpay details
   payment.razorpayPaymentId = payment_id;
-  payment.razorpaySignature = signature;
+  if (signature) {
+    payment.razorpaySignature = signature;
+  }
   payment.webhookData = webhookData;
 
   if (status === 'captured' || status === 'authorized') {
