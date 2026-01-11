@@ -8,10 +8,16 @@ const { sendToMultipleDevices } = require('../utils/fcm');
  */
 const registerDeviceToken = async (userId, token, platform, deviceId = null, deviceInfo = {}) => {
   try {
+    console.log(`📱 [REGISTER TOKEN] Registering token for user ${userId}`);
+    console.log(`📱 [REGISTER TOKEN] Token: ${token.substring(0, 30)}...`);
+    console.log(`📱 [REGISTER TOKEN] Platform: ${platform}`);
+    console.log(`📱 [REGISTER TOKEN] Device Info:`, deviceInfo);
+    
     // Check if token already exists
     let deviceToken = await DeviceToken.findOne({ token });
 
     if (deviceToken) {
+      console.log(`📱 [REGISTER TOKEN] Token exists, updating...`);
       // Update existing token
       deviceToken.userId = userId;
       deviceToken.platform = platform;
@@ -20,10 +26,12 @@ const registerDeviceToken = async (userId, token, platform, deviceId = null, dev
       deviceToken.isActive = true;
       deviceToken.lastUsedAt = new Date();
       await deviceToken.save();
+      console.log(`✅ [REGISTER TOKEN] Token updated successfully`);
       return deviceToken;
     }
 
     // Create new device token
+    console.log(`📱 [REGISTER TOKEN] Creating new token...`);
     deviceToken = await DeviceToken.create({
       userId,
       token,
@@ -33,9 +41,12 @@ const registerDeviceToken = async (userId, token, platform, deviceId = null, dev
       isActive: true,
       lastUsedAt: new Date(),
     });
+    console.log(`✅ [REGISTER TOKEN] Token created successfully: ${deviceToken._id}`);
 
     return deviceToken;
   } catch (error) {
+    console.error(`❌ [REGISTER TOKEN] Error: ${error.message}`);
+    console.error(`❌ [REGISTER TOKEN] Stack:`, error.stack);
     throw new Error(`Failed to register device token: ${error.message}`);
   }
 };
