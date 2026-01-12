@@ -66,12 +66,32 @@ const sendToExpoTokens = async (tokens, notification, data = {}) => {
 
     // Log Expo API response for debugging
     console.log(`📱 Expo API response: ${successCount} success, ${failureCount} failed out of ${tokens.length} tokens`);
+    
+    // Log full response for debugging if there are failures
+    if (failureCount > 0) {
+      console.error('❌ Expo API Error Details:', JSON.stringify(response.data, null, 2));
+    }
 
     // Map results to our format
     const mappedResults = results.map((result, index) => {
       const isSuccess = result.status === 'ok';
       if (!isSuccess) {
-        console.warn(`❌ Expo notification failed for token ${tokens[index]?.substring(0, 20)}...:`, result.message || 'Unknown error');
+        const errorDetails = result.details || {};
+        console.error(`❌ Expo notification failed for token ${tokens[index]?.substring(0, 30)}...`);
+        console.error(`   Status: ${result.status}`);
+        console.error(`   Message: ${result.message || 'Unknown error'}`);
+        console.error(`   Details:`, errorDetails);
+        
+        // Common error messages
+        if (result.message?.includes('InvalidCredentials')) {
+          console.error('   ⚠️  This usually means the Expo project ID is incorrect or the token is invalid');
+        } else if (result.message?.includes('DeviceNotRegistered')) {
+          console.error('   ⚠️  This token is no longer valid. The app may have been uninstalled or token expired.');
+        } else if (result.message?.includes('MessageTooBig')) {
+          console.error('   ⚠️  Notification payload is too large. Reduce the size of title/body/data.');
+        }
+      } else {
+        console.log(`✅ Expo notification sent successfully to token ${tokens[index]?.substring(0, 30)}...`);
       }
       return {
         success: isSuccess,
@@ -79,6 +99,7 @@ const sendToExpoTokens = async (tokens, notification, data = {}) => {
         messageId: result.id || null,
         error: result.status === 'error' ? (result.message || result.details?.error || 'Unknown error') : null,
         details: result.details || null,
+        expoResponse: result, // Include full Expo response for debugging
       };
     });
 

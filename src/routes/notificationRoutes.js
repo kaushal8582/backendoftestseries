@@ -62,5 +62,27 @@ router.delete('/:id', authenticate, authorize(USER_ROLES.ADMIN), notificationCon
  */
 router.post('/:id/send', authenticate, authorize(USER_ROLES.ADMIN), notificationController.sendNotification);
 
+// Debug routes
+/**
+ * @route   GET /api/notifications/debug/my-tokens
+ * @desc    Debug current user's device tokens
+ * @access  Private
+ */
+router.get('/debug/my-tokens', authenticate, notificationController.debugMyTokens);
+
+/**
+ * @route   GET /api/notifications/debug/all-tokens
+ * @desc    Get all active device tokens (Admin only)
+ * @access  Private (Admin only)
+ */
+router.get('/debug/all-tokens', authenticate, authorize(USER_ROLES.ADMIN), notificationController.debugAllTokens);
+
+/**
+ * @route   POST /api/notifications/debug/verify-token
+ * @desc    Verify if a token exists and is active
+ * @access  Private (Admin only)
+ */
+router.post('/debug/verify-token', authenticate, authorize(USER_ROLES.ADMIN), notificationController.verifyToken);
+
 module.exports = router;
 

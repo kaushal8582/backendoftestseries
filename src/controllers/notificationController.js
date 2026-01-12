@@ -1,5 +1,6 @@
 const notificationService = require('../services/notificationService');
 const { HTTP_STATUS } = require('../config/constants');
+const notificationDebugger = require('../utils/notificationDebugger');
 
 /**
  * @route   POST /api/notifications/register-token
@@ -254,6 +255,70 @@ const sendNotification = async (req, res, next) => {
   }
 };
 
+/**
+ * @route   GET /api/notifications/debug/my-tokens
+ * @desc    Debug current user's device tokens
+ * @access  Private
+ */
+const debugMyTokens = async (req, res, next) => {
+  try {
+    const userId = req.user._id;
+    const result = await notificationDebugger.debugUserDeviceTokens(userId);
+    
+    res.status(HTTP_STATUS.OK).json({
+      success: result.success,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   GET /api/notifications/debug/all-tokens
+ * @desc    Get all active device tokens (Admin only)
+ * @access  Private (Admin only)
+ */
+const debugAllTokens = async (req, res, next) => {
+  try {
+    const result = await notificationDebugger.getAllActiveTokens();
+    
+    res.status(HTTP_STATUS.OK).json({
+      success: result.success,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * @route   POST /api/notifications/debug/verify-token
+ * @desc    Verify if a token exists and is active
+ * @access  Private (Admin only)
+ */
+const verifyToken = async (req, res, next) => {
+  try {
+    const { token } = req.body;
+    
+    if (!token) {
+      return res.status(HTTP_STATUS.BAD_REQUEST).json({
+        success: false,
+        error: 'Token is required',
+      });
+    }
+    
+    const result = await notificationDebugger.verifyToken(token);
+    
+    res.status(HTTP_STATUS.OK).json({
+      success: result.success,
+      ...result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   registerDeviceToken,
   removeDeviceToken,
@@ -263,5 +328,8 @@ module.exports = {
   updateNotification,
   deleteNotification,
   sendNotification,
+  debugMyTokens,
+  debugAllTokens,
+  verifyToken,
 };
 

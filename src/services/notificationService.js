@@ -191,9 +191,25 @@ const sendNotification = async (notificationId) => {
     const deviceTokens = await DeviceToken.find({
       userId: { $in: userIds },
       isActive: true,
-    }).select('token platform').lean();
+    }).select('token platform userId').lean();
 
     console.log(`📱 Found ${deviceTokens.length} active device token(s) for ${userIds.length} user(s)`);
+    
+    // Log detailed token info for debugging
+    if (deviceTokens.length > 0) {
+      const expoTokens = deviceTokens.filter((dt) => dt.token && dt.token.startsWith('ExponentPushToken'));
+      const fcmTokens = deviceTokens.filter((dt) => dt.token && !dt.token.startsWith('ExponentPushToken'));
+      console.log(`📱 Token breakdown: ${expoTokens.length} Expo tokens, ${fcmTokens.length} FCM tokens`);
+      
+      // Log first few tokens for debugging (first 30 chars only)
+      console.log(`📱 Sample tokens:`, deviceTokens.slice(0, 3).map((dt) => ({
+        token: dt.token?.substring(0, 30) + '...',
+        platform: dt.platform,
+        userId: dt.userId,
+      })));
+    } else {
+      console.warn(`⚠️  No device tokens found for ${userIds.length} user(s). Users may need to register their device tokens.`);
+    }
 
     if (deviceTokens.length === 0) {
       console.warn(`⚠️  No device tokens found for ${userIds.length} user(s). Users may need to open the app to register their device tokens.`);
