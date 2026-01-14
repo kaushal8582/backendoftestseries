@@ -62,6 +62,10 @@ const createPlatformTestRoom = async (roomData) => {
     marksPerQuestion,
     negativeMarking,
     status: 'scheduled',
+    participants: [{
+      userId: hostId,
+      joinedAt: new Date(),
+    }],
   });
 
   return quizRoom;
@@ -105,6 +109,10 @@ const createCustomRoom = async (roomData) => {
     marksPerQuestion,
     negativeMarking: negativeMarking || 0,
     status: 'scheduled',
+    participants: [{
+      userId: hostId,
+      joinedAt: new Date(),
+    }],
   });
 
   // Create custom questions
