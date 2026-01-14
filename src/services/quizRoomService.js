@@ -191,34 +191,35 @@ const joinRoom = async (roomCode, userId) => {
   try {
     const io = getSocketIO && typeof getSocketIO === 'function' ? getSocketIO() : null;
     if (io) {
-    // Populate participants before emitting
-    const updatedRoom = await QuizRoom.findOne({ roomCode })
-      .populate('participants.userId', 'name email profilePicture');
-    
-    io.to(roomCode).emit('room-update', {
-      participantsCount: updatedRoom.participants.length,
-      status: updatedRoom.status,
-      roomCode,
-      participants: updatedRoom.participants.map(p => ({
-        userId: p.userId?._id || p.userId,
-        userName: p.userId?.name || p.userId?.email || null,
-        userEmail: p.userId?.email || null,
-        joinedAt: p.joinedAt,
-      })),
-    });
-    
-    // Also emit participant-update with full details
-    io.to(roomCode).emit('participant-update', {
-      roomCode,
-      participantsCount: updatedRoom.participants.length,
-      participants: updatedRoom.participants.map(p => ({
-        userId: p.userId?._id || p.userId,
-        userName: p.userId?.name || p.userId?.email || null,
-        userEmail: p.userId?.email || null,
-        joinedAt: p.joinedAt,
-      })),
-      message: 'A new participant joined',
-    });
+      // Populate participants before emitting
+      const updatedRoom = await QuizRoom.findOne({ roomCode })
+        .populate('participants.userId', 'name email profilePicture');
+      
+      // Emit room-update with full participant data
+      io.to(roomCode).emit('room-update', {
+        participantsCount: updatedRoom.participants.length,
+        status: updatedRoom.status,
+        roomCode,
+        participants: updatedRoom.participants.map(p => ({
+          userId: p.userId?._id || p.userId,
+          userName: p.userId?.name || p.userId?.email || null,
+          userEmail: p.userId?.email || null,
+          joinedAt: p.joinedAt,
+        })),
+      });
+      
+      // Also emit participant-update with full details (for real-time updates)
+      io.to(roomCode).emit('participant-update', {
+        roomCode,
+        participantsCount: updatedRoom.participants.length,
+        participants: updatedRoom.participants.map(p => ({
+          userId: p.userId?._id || p.userId,
+          userName: p.userId?.name || p.userId?.email || null,
+          userEmail: p.userId?.email || null,
+          joinedAt: p.joinedAt,
+        })),
+        message: 'A new participant joined',
+      });
     }
   } catch (socketError) {
     // If socket is not available, just log and continue (don't block the join)

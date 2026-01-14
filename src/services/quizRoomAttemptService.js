@@ -430,6 +430,41 @@ const submitQuizRoomAttempt = async (roomCode, userId) => {
     await quizRoom.save();
   }
 
+  // Broadcast leaderboard update via socket
+  try {
+    const { getSocketIO } = require('../utils/cronJob');
+    const io = getSocketIO && typeof getSocketIO === 'function' ? getSocketIO() : null;
+    if (io) {
+      const leaderboard = await require('../models/QuizRoomAttempt').find({ roomId: quizRoom._id })
+        .populate('userId', 'name email profilePicture')
+        .sort({ score: -1, timeTaken: 1 })
+        .limit(50);
+
+      // Broadcast to all in room
+      io.to(quizRoom.roomCode).emit('leaderboard-update', {
+        roomCode: quizRoom.roomCode,
+        leaderboard: leaderboard.map(l => ({
+          _id: l._id,
+          userId: l.userId?._id || l.userId,
+          userName: l.userId?.name || l.userId?.email || null,
+          userEmail: l.userId?.email || null,
+          score: l.score,
+          totalMarks: l.totalMarks,
+          correctAnswers: l.correctAnswers,
+          wrongAnswers: l.wrongAnswers,
+          skippedAnswers: l.skippedAnswers,
+          accuracy: l.accuracy,
+          timeTaken: l.timeTaken,
+          rank: l.rank,
+          submittedAt: l.submittedAt,
+        })),
+      });
+    }
+  } catch (socketError) {
+    // If socket is not available, just log and continue (don't block the submission)
+    console.error('Error broadcasting leaderboard update via socket:', socketError);
+  }
+
   return quizRoomAttempt;
 };
 
