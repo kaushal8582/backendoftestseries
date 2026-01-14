@@ -53,30 +53,43 @@ const sendToDevice = async (token, notification, data = {}) => {
     const message = {
       token,
       notification: {
-        title: notification.title,
-        body: notification.body,
+        title: notification.title || 'ExamZen',
+        body: notification.body || '',
         imageUrl: notification.image || undefined,
       },
       data: {
-        ...data,
         // Convert all data values to strings (FCM requirement)
         ...Object.keys(data).reduce((acc, key) => {
           acc[key] = String(data[key]);
           return acc;
         }, {}),
+        // Include title and body in data for React Native/Expo handling
+        title: String(notification.title || 'ExamZen'),
+        body: String(notification.body || notification.title || 'New notification'),
+        type: 'fcm',
+        // Include image if available
+        ...(notification.image ? { image: String(notification.image) } : {}),
+        // Include deepLink if available
+        ...(data.deepLink ? { deepLink: String(data.deepLink) } : {}),
+        // Include deepLink if available
+        ...(data.deepLink ? { deepLink: String(data.deepLink) } : {}),
       },
       android: {
         priority: 'high',
-        notification: {
-          sound: 'default',
-          channelId: 'default',
-        },
+        // For data-only messages, notification settings are handled by expo-notifications
+        // But we can still set priority and TTL
+        ttl: 3600000,
       },
       apns: {
         payload: {
           aps: {
             sound: 'default',
             badge: 1,
+            alert: {
+              title: notification.title || 'ExamZen',
+              body: notification.body || '',
+            },
+            contentAvailable: true,
           },
         },
       },
@@ -122,14 +135,11 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
       image: notification.image,
     };
 
-    const dataPayload = {
-      ...data,
-      // Convert all data values to strings (FCM requirement)
-      ...Object.keys(data).reduce((acc, key) => {
-        acc[key] = String(data[key]);
-        return acc;
-      }, {}),
-    };
+    // Convert all data values to strings (FCM requirement)
+    const dataPayload = Object.keys(data).reduce((acc, key) => {
+      acc[key] = String(data[key]);
+      return acc;
+    }, {});
 
     // Filter out Expo Push Tokens (they start with "ExponentPushToken")
     const expoTokens = [];
@@ -165,25 +175,87 @@ const sendToMultipleDevices = async (tokens, notification, data = {}) => {
       }
     }
 
+    // For FCM with React Native/Expo, we need BOTH notification and data fields
+    // notification field: For Android system to display the notification
+    // data field: For expo-notifications to extract title/body/image/deepLink
+    // This ensures both work properly
+    
+    // Prepare data payload - all values must be strings for FCM
+    // Exclude 'body' from dataPayload to avoid conflicts
+    const dataPayloadWithoutBody = { ...dataPayload };
+    delete dataPayloadWithoutBody.body; // Remove body from dataPayload to avoid JSON string issue
+    
+    const fcmData = {
+      // Convert all data values to strings (FCM requirement)
+      // Exclude body to avoid conflicts
+      ...Object.keys(dataPayloadWithoutBody).reduce((acc, key) => {
+        const value = dataPayloadWithoutBody[key];
+        if (value !== null && value !== undefined && key !== 'body') {
+          acc[key] = String(value);
+        }
+        return acc;
+      }, {}),
+      // CRITICAL: Include title and body in data for expo-notifications
+      // Ensure body is properly set - use the actual body text, not JSON
+      title: String(notificationPayload.title || 'ExamZen'),
+      body: String(
+        notificationPayload.body || 
+        notificationPayload.message || 
+        notificationPayload.description || 
+        notificationPayload.title || 
+        'New notification'
+      ),
+      type: 'fcm',
+    };
+    
+    // Include image if available
+    if (notificationPayload.image) {
+      fcmData.image = String(notificationPayload.image);
+    }
+    
+    // Include deepLink if available
+    if (dataPayload.deepLink) {
+      fcmData.deepLink = String(dataPayload.deepLink);
+    }
+    
+    // Log what we're sending to FCM
+    console.log('📤 [FCM] Preparing FCM message:', {
+      notificationTitle: notificationPayload.title,
+      notificationBody: notificationPayload.body,
+      dataTitle: fcmData.title,
+      dataBody: fcmData.body,
+      image: fcmData.image ? 'Present' : 'Missing',
+      imageUrl: notificationPayload.image,
+      deepLink: fcmData.deepLink || 'None',
+      dataKeys: Object.keys(fcmData),
+      totalFCMTokens: fcmTokens.length,
+    });
+    
     const message = {
+      // Include notification field for Android system display
       notification: {
-        title: notificationPayload.title,
-        body: notificationPayload.body,
+        title: notificationPayload.title || 'ExamZen',
+        body: notificationPayload.body || '',
         imageUrl: notificationPayload.image || undefined,
       },
-      data: dataPayload,
+      // Include data field for expo-notifications
+      data: fcmData,
       android: {
         priority: 'high',
-        notification: {
-          sound: 'default',
-          channelId: 'default',
-        },
+        // For data-only messages, notification settings are handled by expo-notifications
+        // But we can still set priority and TTL
+        ttl: 3600000,
       },
       apns: {
         payload: {
           aps: {
             sound: 'default',
             badge: 1,
+            alert: {
+              title: notificationPayload.title || 'ExamZen',
+              body: notificationPayload.body || '',
+            },
+            contentAvailable: true,
           },
         },
       },

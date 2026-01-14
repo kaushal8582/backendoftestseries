@@ -240,8 +240,20 @@ const sendNotification = async (notificationId) => {
 
     const dataPayload = {
       notificationId: notification._id.toString(),
+      // Include deepLink for navigation
+      ...(notification.deepLink && { deepLink: notification.deepLink }),
       ...notification.data,
     };
+
+    // Log what we're sending
+    console.log('📤 [NOTIFICATION SERVICE] Sending notification:', {
+      title: notificationPayload.title,
+      body: notificationPayload.body,
+      image: notificationPayload.image ? 'Present' : 'Missing',
+      deepLink: dataPayload.deepLink || 'None',
+      dataPayloadKeys: Object.keys(dataPayload),
+      totalTokens: tokens.length,
+    });
 
     // Send notifications
     console.log(`📤 Sending notification to ${tokens.length} device(s)...`);

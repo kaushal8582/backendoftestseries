@@ -12,13 +12,18 @@ const { HTTP_STATUS } = require('../config/constants');
 const getGlobalLeaderboard = async (options = {}) => {
   const { limit = 50, offset = 0 } = options;
 
-  // Get users sorted by total XP
+  // Get users sorted by total XP (same logic as getUserRank)
+  // Sort by totalXP descending, then by level descending
   const users = await User.find({
     isActive: true,
     'gamification.totalXP': { $exists: true },
   })
     .select('name email gamification totalTestsCompleted studyStreak')
-    .sort({ 'gamification.totalXP': -1, 'gamification.level': -1 })
+    .sort({ 
+      'gamification.totalXP': -1, 
+      'gamification.level': -1,
+      createdAt: 1 // Final tie-breaker for consistency
+    })
     .limit(limit)
     .skip(offset)
     .lean();
@@ -133,7 +138,7 @@ const getWeeklyLeaderboard = async (options = {}) => {
       },
     },
     {
-      $sort: { weeklyXP: -1, testsCompleted: -1 },
+      $sort: { weeklyXP: -1, testsCompleted: -1, _id: 1 }, // Add _id for consistent tie-breaking
     },
     {
       $skip: offset,
@@ -364,8 +369,8 @@ const getUserRank = async (userId, type = 'global') => {
     const userWeeklyXP = userWeeklyStats && userWeeklyStats.length > 0 ? userWeeklyStats[0].weeklyXP : 0;
     const userTestsCompleted = userWeeklyStats && userWeeklyStats.length > 0 ? userWeeklyStats[0].testsCompleted : 0;
 
-    // Count users with higher weekly XP
-    const usersWithHigherXP = await TestAttempt.aggregate([
+    // Count users with higher weekly XP or same XP but more tests (matching list sort order)
+    const usersWithHigherRank = await TestAttempt.aggregate([
       {
         $match: {
           submittedAt: { $gte: startOfWeek, $exists: true },
@@ -385,37 +390,13 @@ const getUserRank = async (userId, type = 'global') => {
       },
       {
         $match: {
-          weeklyXP: { $gt: userWeeklyXP },
-        },
-      },
-      {
-        $count: 'total',
-      },
-    ]);
-
-    // Count users with same XP but more tests completed
-    const usersWithSameXPMoreTests = await TestAttempt.aggregate([
-      {
-        $match: {
-          submittedAt: { $gte: startOfWeek, $exists: true },
-          status: 'completed',
-        },
-      },
-      {
-        $group: {
-          _id: '$userId',
-          weeklyXP: {
-            $sum: {
-              $ifNull: ['$gamificationRewards.xp', 0],
+          $or: [
+            { weeklyXP: { $gt: userWeeklyXP } },
+            {
+              weeklyXP: userWeeklyXP,
+              testsCompleted: { $gt: userTestsCompleted },
             },
-          },
-          testsCompleted: { $sum: 1 },
-        },
-      },
-      {
-        $match: {
-          weeklyXP: userWeeklyXP,
-          testsCompleted: { $gt: userTestsCompleted },
+          ],
         },
       },
       {
@@ -423,9 +404,8 @@ const getUserRank = async (userId, type = 'global') => {
       },
     ]);
 
-    const higherXPCount = usersWithHigherXP && usersWithHigherXP.length > 0 ? usersWithHigherXP[0].total : 0;
-    const sameXPMoreTestsCount = usersWithSameXPMoreTests && usersWithSameXPMoreTests.length > 0 ? usersWithSameXPMoreTests[0].total : 0;
-    const rank = higherXPCount + sameXPMoreTestsCount + 1;
+    const higherRankCount = usersWithHigherRank && usersWithHigherRank.length > 0 ? usersWithHigherRank[0].total : 0;
+    const rank = higherRankCount + 1;
 
     // Get total users with XP > 0 this week
     const totalUsersResult = await TestAttempt.aggregate([

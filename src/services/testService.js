@@ -66,8 +66,22 @@ const getTests = async (examId, queryParams = {}) => {
 
   const total = await Test.countDocuments(query);
 
+  // Calculate actual question count for each test
+  const Question = require('../models/Question');
+  const testsWithQuestionCount = await Promise.all(
+    tests.map(async (test) => {
+      const testObj = test.toObject();
+      const actualQuestionCount = await Question.countDocuments({ 
+        testId: test._id, 
+        isActive: true 
+      });
+      testObj.totalQuestions = actualQuestionCount || test.totalQuestions || 0;
+      return testObj;
+    })
+  );
+
   return {
-    tests,
+    tests: testsWithQuestionCount,
     pagination: {
       page: parseInt(page),
       limit: parseInt(limit),
@@ -90,7 +104,18 @@ const getTestById = async (testId) => {
     throw new AppError('Test not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  return test;
+  // Calculate actual question count from database
+  const Question = require('../models/Question');
+  const actualQuestionCount = await Question.countDocuments({ 
+    testId: testId, 
+    isActive: true 
+  });
+
+  // Convert to object and update totalQuestions with actual count
+  const testObj = test.toObject();
+  testObj.totalQuestions = actualQuestionCount || test.totalQuestions || 0;
+
+  return testObj;
 };
 
 /**

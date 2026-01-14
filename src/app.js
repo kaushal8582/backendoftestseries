@@ -26,6 +26,7 @@ const leaderboardRoutes = require('./routes/leaderboardRoutes');
 const powerUpRoutes = require('./routes/powerUpRoutes');
 const categoryMasteryRoutes = require('./routes/categoryMasteryRoutes');
 const quizRoomRoutes = require('./routes/quizRoomRoutes');
+const uploadRoutes = require('./routes/uploadRoutes');
 
 // Initialize Express app
 const app = express();
@@ -82,6 +83,7 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/power-ups', powerUpRoutes);
 app.use('/api/category-mastery', categoryMasteryRoutes);
 app.use('/api/quiz-rooms', quizRoomRoutes);
+app.use('/api/upload', uploadRoutes);
 
 // 404 handler
 app.use((req, res, next) => {

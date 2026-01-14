@@ -16,6 +16,11 @@ const notificationSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    deepLink: {
+      type: String,
+      default: null,
+      trim: true,
+    },
     data: {
       type: mongoose.Schema.Types.Mixed,
       default: {},
