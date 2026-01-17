@@ -38,15 +38,17 @@ const createPlatformTestRoom = async (roomData) => {
   // Generate room code
   const roomCode = await QuizRoom.generateRoomCode();
 
-  // Get questions for total marks calculation
+  // Get questions count for total marks calculation
   const questions = await Question.find({ testId, isActive: true });
   if (questions.length === 0) {
     throw new AppError('Test has no questions', HTTP_STATUS.BAD_REQUEST);
   }
 
-  const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
-  const marksPerQuestion = questions.length > 0 ? totalMarks / questions.length : 0;
-  const negativeMarking = questions[0]?.negativeMarks || 0;
+  // Use test-level marks instead of question-level marks
+  const correctMark = test.correctMark || 1;
+  const negativeMarking = test.negativeMark || 0;
+  const totalMarks = correctMark * questions.length;
+  const marksPerQuestion = correctMark;
 
   const quizRoom = await QuizRoom.create({
     roomCode,

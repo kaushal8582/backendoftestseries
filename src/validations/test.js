@@ -30,6 +30,16 @@ const validateCreateTest = [
     .withMessage('Total marks is required')
     .isInt({ min: 1 })
     .withMessage('Total marks must be a positive integer'),
+  body('correctMark')
+    .notEmpty()
+    .withMessage('Correct mark is required')
+    .isFloat({ min: 0 })
+    .withMessage('Correct mark must be 0 or greater'),
+  body('negativeMark')
+    .notEmpty()
+    .withMessage('Negative mark is required')
+    .isFloat({ min: 0 })
+    .withMessage('Negative mark must be 0 or greater'),
   body('duration')
     .notEmpty()
     .withMessage('Duration is required')
@@ -69,6 +79,14 @@ const validateUpdateTest = [
     .optional()
     .isInt({ min: 1 })
     .withMessage('Total marks must be a positive integer'),
+  body('correctMark')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Correct mark must be 0 or greater'),
+  body('negativeMark')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('Negative mark must be 0 or greater'),
   body('duration')
     .optional()
     .isInt({ min: 1 })

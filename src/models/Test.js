@@ -28,6 +28,16 @@ const testSchema = new mongoose.Schema(
       required: [true, 'Please provide total marks'],
       min: [1, 'Total marks must be at least 1'],
     },
+    correctMark: {
+      type: Number,
+      min: [0, 'Correct mark must be 0 or greater'],
+      default: 1,
+    },
+    negativeMark: {
+      type: Number,
+      min: [0, 'Negative mark must be 0 or greater'],
+      default: 0,
+    },
     duration: {
       type: Number, // Duration in minutes
       required: [true, 'Please provide test duration'],

@@ -167,7 +167,7 @@ const createTestAttemptForRoom = async (userId, testId) => {
   // Get all questions for the test
   const questions = await Question.find({ testId, isActive: true })
     .sort({ order: 1 })
-    .select('_id marks negativeMarks');
+    .select('_id');
 
   if (questions.length === 0) {
     throw new AppError('No questions found for this test', HTTP_STATUS.NOT_FOUND);
@@ -182,8 +182,9 @@ const createTestAttemptForRoom = async (userId, testId) => {
     timeSpent: 0,
   }));
 
-  // Calculate total marks
-  const totalMarks = questions.reduce((sum, q) => sum + q.marks, 0);
+  // Calculate total marks using test-level marks
+  const correctMark = test.correctMark || 1;
+  const totalMarks = correctMark * questions.length;
 
   // Create test attempt (for quiz room, we allow multiple attempts even if user completed it on platform)
   // Note: quizRoomId will be set after QuizRoomAttempt is created
@@ -317,7 +318,7 @@ const submitAnswer = async (roomCode, userId, questionId, selectedOption, timeSp
 
   const isCorrect = question.correctOption === selectedOption;
   
-  // Get marks from question (for custom questions, use marks field; for platform tests, use marks from quizRoom)
+  // Get marks from question (for custom questions, use marks field; for platform tests, use test-level marks)
   let marksPerQuestion;
   let negativeMarks;
   
@@ -326,9 +327,17 @@ const submitAnswer = async (roomCode, userId, questionId, selectedOption, timeSp
     marksPerQuestion = question.marks || quizRoom.marksPerQuestion || 1;
     negativeMarks = question.negativeMarks !== undefined ? question.negativeMarks : (quizRoom.negativeMarking || 0);
   } else {
-    // Platform test questions - get from quizRoom settings
-    marksPerQuestion = quizRoom.marksPerQuestion || 1;
-    negativeMarks = quizRoom.negativeMarking || 0;
+    // Platform test questions - use test-level marks from the test model
+    const Test = require('../models/Test');
+    const test = await Test.findById(quizRoom.testId);
+    if (test) {
+      marksPerQuestion = test.correctMark || quizRoom.marksPerQuestion || 1;
+      negativeMarks = test.negativeMark || quizRoom.negativeMarking || 0;
+    } else {
+      // Fallback to quizRoom settings if test not found
+      marksPerQuestion = quizRoom.marksPerQuestion || 1;
+      negativeMarks = quizRoom.negativeMarking || 0;
+    }
   }
   
   const marksObtained = isCorrect 

@@ -229,14 +229,20 @@ const submitAnswer = async (attemptId, questionId, selectedOption, timeSpent = 0
     throw new AppError('Question not found', HTTP_STATUS.NOT_FOUND);
   }
 
-  // Update answer
+  // Get test details to use test-level marks
+  const test = await Test.findById(testAttempt.testId);
+  if (!test) {
+    throw new AppError('Test not found', HTTP_STATUS.NOT_FOUND);
+  }
+
+  // Update answer using test-level marks
   const isCorrect = question.correctOption === selectedOption;
   let marksObtained = 0;
 
   if (isCorrect) {
-    marksObtained = question.marks;
+    marksObtained = test.correctMark || 1; // Use test-level correctMark, default to 1
   } else if (selectedOption && selectedOption !== null) {
-    marksObtained = -question.negativeMarks;
+    marksObtained = -(test.negativeMark || 0); // Use test-level negativeMark, default to 0
   }
 
   testAttempt.answers[answerIndex] = {
@@ -259,7 +265,7 @@ const submitAnswer = async (attemptId, questionId, selectedOption, timeSpent = 0
  */
 const submitTest = async (attemptId) => {
   const testAttempt = await TestAttempt.findById(attemptId)
-    .populate('testId')
+    .populate('testId', 'testName totalMarks duration correctMark negativeMark')
     .populate('examId')
     .populate('dailyChallengeId'); // Populate dailyChallengeId if it exists
 
@@ -505,7 +511,7 @@ const getTestAttempt = async (attemptId, userId) => {
   const testAttempt = await TestAttempt.findById(attemptId)
     .populate({
       path: 'testId',
-      select: 'testName totalMarks duration',
+      select: 'testName totalMarks duration correctMark negativeMark',
     })
     .populate('examId', 'title category')
     .populate('userId', 'name email');
@@ -539,7 +545,7 @@ const getTestAttempt = async (attemptId, userId) => {
  */
 const getTestAttemptDetails = async (attemptId, userId) => {
   const testAttempt = await TestAttempt.findById(attemptId)
-    .populate('testId', 'testName totalMarks duration')
+    .populate('testId', 'testName totalMarks duration correctMark negativeMark')
     .populate('examId', 'title category');
 
   if (!testAttempt) {
@@ -639,7 +645,7 @@ const checkTestCompletion = async (userId, testId, dailyChallengeId = null) => {
     };
 
   const completedAttempt = await TestAttempt.findOne(query)
-    .populate('testId', 'testName totalMarks duration')
+    .populate('testId', 'testName totalMarks duration correctMark negativeMark')
     .sort({ submittedAt: -1 }); // Get the most recent completion
 
   if (completedAttempt) {
@@ -673,7 +679,7 @@ const checkTestCompletion = async (userId, testId, dailyChallengeId = null) => {
   };
 
   const completedAttempt = await TestAttempt.findOne(query)
-    .populate('testId', 'testName totalMarks duration')
+    .populate('testId', 'testName totalMarks duration correctMark negativeMark')
     .sort({ submittedAt: -1 }); // Get the most recent completion (quiz or normal)
 
   if (completedAttempt) {
