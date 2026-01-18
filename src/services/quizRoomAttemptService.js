@@ -426,8 +426,23 @@ const submitQuizRoomAttempt = async (roomCode, userId) => {
   quizRoomAttempt.timeTaken = timeTaken;
   await quizRoomAttempt.save();
 
-  // Update rank
+  // Update rank in quiz room
   await updateRank(quizRoom._id, userId);
+
+  // Calculate rank in general test leaderboard (for test ranking display)
+  // This allows quiz attempts to show rank in the test ranking section
+  if (testAttempt.testId) {
+    const testRankQuery = {
+      testId: testAttempt.testId,
+      status: 'completed',
+      score: { $gt: score },
+      _id: { $ne: testAttempt._id },
+    };
+    // Note: We include ALL attempts (quiz and normal) for general test ranking
+    const betterAttempts = await TestAttempt.countDocuments(testRankQuery);
+    testAttempt.rank = betterAttempts + 1;
+    await testAttempt.save();
+  }
 
   // Update room stats
   const participant = quizRoom.participants.find(
