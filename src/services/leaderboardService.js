@@ -619,10 +619,21 @@ const getDailyChallengeLeaderboard = async (challengeId = null, options = {}) =>
  * Get test-specific leaderboard
  * @param {string} testId - Test ID
  * @param {Object} options - Query options
+ * @param {string} userId - Optional user ID to calculate user's rank
  * @returns {Promise<Object>} - Leaderboard data
  */
-const getTestLeaderboard = async (testId, options = {}) => {
+const getTestLeaderboard = async (testId, options = {}, userId = null) => {
   const { limit = 50, offset = 0 } = options;
+
+  // Validate testId
+  if (!testId) {
+    throw new AppError('Test ID is required', HTTP_STATUS.BAD_REQUEST);
+  }
+
+  // Validate testId format (MongoDB ObjectId)
+  if (!mongoose.Types.ObjectId.isValid(testId)) {
+    throw new AppError('Invalid test ID format', HTTP_STATUS.BAD_REQUEST);
+  }
 
   // Get all completed attempts for this test, sorted by score
   // Include both normal and quiz room attempts for unified test ranking
@@ -638,6 +649,7 @@ const getTestLeaderboard = async (testId, options = {}) => {
     .lean();
 
   // Get user details and format leaderboard
+  // Frontend expects nested user object structure
   const leaderboard = attempts
     .map((attempt, index) => {
       const user = attempt.userId;
@@ -648,10 +660,11 @@ const getTestLeaderboard = async (testId, options = {}) => {
 
       return {
         rank: offset + index + 1,
-        userId: user._id.toString(),
-        name: user.name || 'Unknown User',
-        email: user.email || '',
-        level: user.gamification?.level || 1,
+        user: {  // Wrap in user object for frontend compatibility
+          _id: user._id.toString(),
+          name: user.name || 'Unknown User',
+          email: user.email || '',
+        },
         score: attempt.score || 0,
         totalMarks: attempt.totalMarks || 0,
         accuracy: attempt.accuracy || 0,
@@ -660,7 +673,10 @@ const getTestLeaderboard = async (testId, options = {}) => {
         wrongAnswers: attempt.wrongAnswers || 0,
         skippedAnswers: attempt.skippedAnswers || 0,
         submittedAt: attempt.submittedAt,
+        level: user.gamification?.level || 1,
         avatar: user.gamification?.avatar || null,
+        // Keep userId for backward compatibility if needed
+        userId: user._id.toString(),
       };
     })
     .filter((item) => item !== null);
@@ -671,6 +687,51 @@ const getTestLeaderboard = async (testId, options = {}) => {
     // Include both quiz and normal attempts in total count
   });
 
+  // Calculate user's rank if userId is provided
+  let userRank = null;
+  let userRankData = null;
+  if (userId) {
+    // Find user's attempt for this test
+    const userAttempt = await TestAttempt.findOne({
+      testId,
+      userId,
+      status: 'completed',
+    }).sort({ score: -1, accuracy: -1, timeTaken: 1 }); // Get best attempt
+
+    if (userAttempt) {
+      // Count attempts with better scores
+      const betterAttempts = await TestAttempt.countDocuments({
+        testId,
+        status: 'completed',
+        $or: [
+          { score: { $gt: userAttempt.score } },
+          {
+            score: userAttempt.score,
+            accuracy: { $gt: userAttempt.accuracy },
+          },
+          {
+            score: userAttempt.score,
+            accuracy: userAttempt.accuracy,
+            timeTaken: { $lt: userAttempt.timeTaken },
+          },
+        ],
+      });
+
+      userRank = betterAttempts + 1;
+      const percentile = total > 0 ? Math.round(((total - userRank) / total) * 100) : 0;
+
+      userRankData = {
+        rank: userRank,
+        score: userAttempt.score,
+        totalMarks: userAttempt.totalMarks,
+        accuracy: userAttempt.accuracy,
+        timeTaken: userAttempt.timeTaken,
+        percentile,
+        totalParticipants: total,
+      };
+    }
+  }
+
   return {
     leaderboard,
     pagination: {
@@ -679,6 +740,7 @@ const getTestLeaderboard = async (testId, options = {}) => {
       offset,
       pages: Math.ceil(total / limit),
     },
+    userRank: userRankData, // User's rank data if userId provided
   };
 };
 

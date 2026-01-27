@@ -4,9 +4,10 @@ const { HTTP_STATUS } = require('../config/constants');
  * Custom Error Class
  */
 class AppError extends Error {
-  constructor(message, statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR) {
+  constructor(message, statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR, errorCode = null) {
     super(message);
     this.statusCode = statusCode;
+    this.errorCode = errorCode;
     this.isOperational = true;
     Error.captureStackTrace(this, this.constructor);
   }
@@ -56,11 +57,23 @@ const errorHandler = (err, req, res, next) => {
     error = new AppError(message, HTTP_STATUS.UNAUTHORIZED);
   }
 
-  res.status(error.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
+  // Standardized error response format
+  const statusCode = error.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;
+  const response = {
     success: false,
-    error: error.message || 'Server Error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
+    error: error.message || 'An unexpected error occurred. Please try again.',
+    ...(process.env.NODE_ENV === 'development' && { 
+      stack: err.stack,
+      details: err.details || null,
+    }),
+  };
+
+  // Add error code for client-side handling
+  if (error.errorCode) {
+    response.errorCode = error.errorCode;
+  }
+
+  res.status(statusCode).json(response);
 };
 
 module.exports = {

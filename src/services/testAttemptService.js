@@ -132,21 +132,8 @@ const startTest = async (userId, testId, dailyChallengeId = null) => {
     }
   }
 
-  // IMPORTANT: Check if user has attempted this test in quiz mode FIRST
-  // If quiz attempt exists first, prevent normal mode attempt
-  if (!dailyChallengeId) {
-    const quizAttemptFirst = await TestAttempt.findOne({
-      userId,
-      testId,
-      quizRoomId: { $ne: null }, // Quiz attempt exists
-      dailyChallengeId: null,
-    }).sort({ createdAt: 1 }); // Get the earliest attempt
-
-    if (quizAttemptFirst) {
-      // User attempted in quiz mode first, cannot take in normal mode
-      throw new AppError('You have already attempted this test in quiz mode. You cannot take it again in normal mode.', HTTP_STATUS.FORBIDDEN);
-    }
-  }
+  // Allow both normal and quiz attempts independently
+  // No need to prevent one mode if the other exists
 
   // Get all questions for the test
   const questions = await Question.find({ testId, isActive: true })
@@ -631,18 +618,62 @@ const getTestAttemptDetails = async (attemptId, userId) => {
  * Check if user has completed a test
  * @param {string} userId - User ID
  * @param {string} testId - Test ID
+ * @param {string} dailyChallengeId - Daily challenge ID (optional)
+ * @param {string} attemptType - Type of attempt: 'normal', 'quiz', or 'all' (default: 'normal')
  * @returns {Promise<Object>} - Completion status with attempt details if completed
  */
-const checkTestCompletion = async (userId, testId, dailyChallengeId = null) => {
+const checkTestCompletion = async (userId, testId, dailyChallengeId = null, attemptType = 'normal') => {
   // For daily challenge, only check daily challenge attempts
   if (dailyChallengeId) {
+    const query = {
+      userId,
+      testId,
+      status: 'completed',
+      dailyChallengeId: dailyChallengeId,
+      quizRoomId: null, // Exclude quiz attempts for daily challenges
+    };
+
+    const completedAttempt = await TestAttempt.findOne(query)
+      .populate('testId', 'testName totalMarks duration correctMark negativeMark')
+      .sort({ submittedAt: -1 }); // Get the most recent completion
+
+    if (completedAttempt) {
+      return {
+        isCompleted: true,
+        attempt: {
+          _id: completedAttempt._id,
+          score: completedAttempt.score,
+          totalMarks: completedAttempt.totalMarks,
+          accuracy: completedAttempt.accuracy,
+          submittedAt: completedAttempt.submittedAt,
+          rank: completedAttempt.rank,
+        },
+      };
+    }
+
+    return {
+      isCompleted: false,
+      attempt: null,
+    };
+  }
+
+  // Build query based on attemptType
   const query = {
     userId,
     testId,
     status: 'completed',
-      dailyChallengeId: dailyChallengeId,
-      quizRoomId: null, // Exclude quiz attempts for daily challenges
-    };
+    dailyChallengeId: null, // Exclude daily challenge attempts
+  };
+
+  // Filter by attempt type
+  if (attemptType === 'normal') {
+    // Only check normal attempts (quizRoomId: null)
+    query.quizRoomId = null;
+  } else if (attemptType === 'quiz') {
+    // Only check quiz attempts (quizRoomId exists)
+    query.quizRoomId = { $ne: null };
+  }
+  // 'all' shows both (no filter on quizRoomId)
 
   const completedAttempt = await TestAttempt.findOne(query)
     .populate('testId', 'testName totalMarks duration correctMark negativeMark')
@@ -658,41 +689,8 @@ const checkTestCompletion = async (userId, testId, dailyChallengeId = null) => {
         accuracy: completedAttempt.accuracy,
         submittedAt: completedAttempt.submittedAt,
         rank: completedAttempt.rank,
-        },
-      };
-    }
-
-    return {
-      isCompleted: false,
-      attempt: null,
-    };
-  }
-
-  // For normal test, check ALL attempts (both quiz and normal) to show unified results
-  // This ensures that if user completed in quiz mode, it shows as completed in normal mode too
-  const query = {
-    userId,
-    testId,
-    status: 'completed',
-    dailyChallengeId: null, // Exclude daily challenge attempts
-    // Note: We don't filter by quizRoomId here - we want to check both quiz and normal attempts
-  };
-
-  const completedAttempt = await TestAttempt.findOne(query)
-    .populate('testId', 'testName totalMarks duration correctMark negativeMark')
-    .sort({ submittedAt: -1 }); // Get the most recent completion (quiz or normal)
-
-  if (completedAttempt) {
-    return {
-      isCompleted: true,
-      attempt: {
-        _id: completedAttempt._id,
-        score: completedAttempt.score,
-        totalMarks: completedAttempt.totalMarks,
-        accuracy: completedAttempt.accuracy,
-        submittedAt: completedAttempt.submittedAt,
-        rank: completedAttempt.rank,
         quizRoomId: completedAttempt.quizRoomId, // Include quizRoomId to identify if it's a quiz attempt
+        attemptType: completedAttempt.quizRoomId ? 'quiz' : 'normal', // Explicit attempt type
       },
     };
   }

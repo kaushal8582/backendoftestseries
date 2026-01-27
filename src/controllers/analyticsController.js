@@ -67,16 +67,21 @@ const getAppAnalytics = async (req, res) => {
 /**
  * Get test leaderboard
  */
-const getTestLeaderboardHandler = async (req, res) => {
+const getTestLeaderboardHandler = async (req, res, next) => {
   try {
     const { testId } = req.params;
     const { page = 1, limit = 50 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
+    const userId = req.user?._id || null; // Get current user ID for rank calculation
 
-    const leaderboard = await getTestLeaderboard(testId, {
-      limit: parseInt(limit),
-      offset,
-    });
+    const leaderboard = await getTestLeaderboard(
+      testId,
+      {
+        limit: parseInt(limit),
+        offset,
+      },
+      userId
+    );
 
     res.status(200).json({
       success: true,
@@ -84,7 +89,7 @@ const getTestLeaderboardHandler = async (req, res) => {
     });
   } catch (error) {
     console.error('Error getting test leaderboard:', error);
-    res.status(500).json({ error: 'Failed to get test leaderboard' });
+    next(error); // Use centralized error handler
   }
 };
 

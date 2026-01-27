@@ -148,11 +148,16 @@ const getTestAttemptDetails = async (req, res, next) => {
  */
 const checkTestCompletion = async (req, res, next) => {
   try {
-    const { dailyChallengeId } = req.query; // Get dailyChallengeId from query params
+    const { dailyChallengeId, attemptType = 'normal' } = req.query; // Get dailyChallengeId and attemptType from query params
+    // Validate attemptType
+    const validAttemptTypes = ['normal', 'quiz', 'all'];
+    const validatedAttemptType = validAttemptTypes.includes(attemptType) ? attemptType : 'normal';
+    
     const result = await testAttemptService.checkTestCompletion(
       req.user._id,
       req.params.testId,
-      dailyChallengeId || null
+      dailyChallengeId || null,
+      validatedAttemptType
     );
 
     res.status(HTTP_STATUS.OK).json({

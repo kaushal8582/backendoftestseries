@@ -17,13 +17,13 @@ const createPlatformTestRoom = async (roomData) => {
   // Verify test exists
   const test = await Test.findById(testId);
   if (!test) {
-    throw new AppError('Test not found', HTTP_STATUS.NOT_FOUND);
+    throw new AppError('The selected test could not be found. Please choose a different test.', HTTP_STATUS.NOT_FOUND, 'TEST_NOT_FOUND');
   }
 
   // Always use test's duration from database, ignore duration from request
   const testDuration = test.duration;
   if (!testDuration || testDuration < 1) {
-    throw new AppError('Test does not have a valid duration', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError('The selected test does not have a valid duration. Please contact support.', HTTP_STATUS.BAD_REQUEST, 'INVALID_TEST_DURATION');
   }
 
   // Calculate end time using test's duration
@@ -31,8 +31,9 @@ const createPlatformTestRoom = async (roomData) => {
   const end = new Date(start.getTime() + testDuration * 60 * 1000);
 
   // Check if start time is in future
-  if (start < new Date()) {
-    throw new AppError('Start time must be in the future', HTTP_STATUS.BAD_REQUEST);
+  const now = new Date();
+  if (start < now) {
+    throw new AppError('Quiz start time must be in the future. Please select a later date and time.', HTTP_STATUS.BAD_REQUEST, 'INVALID_START_TIME');
   }
 
   // Generate room code
@@ -41,7 +42,7 @@ const createPlatformTestRoom = async (roomData) => {
   // Get questions count for total marks calculation
   const questions = await Question.find({ testId, isActive: true });
   if (questions.length === 0) {
-    throw new AppError('Test has no questions', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError('The selected test has no questions available. Please choose a different test.', HTTP_STATUS.BAD_REQUEST, 'NO_QUESTIONS');
   }
 
   // Use test-level marks instead of question-level marks
@@ -81,7 +82,7 @@ const createCustomRoom = async (roomData) => {
 
   // Validate questions
   if (!questions || questions.length === 0) {
-    throw new AppError('At least one question is required', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError('At least one question is required to create a quiz room.', HTTP_STATUS.BAD_REQUEST, 'NO_QUESTIONS');
   }
 
   // Calculate end time
@@ -89,8 +90,9 @@ const createCustomRoom = async (roomData) => {
   const end = new Date(start.getTime() + duration * 60 * 1000);
 
   // Check if start time is in future
-  if (start < new Date()) {
-    throw new AppError('Start time must be in the future', HTTP_STATUS.BAD_REQUEST);
+  const now = new Date();
+  if (start < now) {
+    throw new AppError('Quiz start time must be in the future. Please select a later date and time.', HTTP_STATUS.BAD_REQUEST, 'INVALID_START_TIME');
   }
 
   // Generate room code
@@ -152,12 +154,13 @@ const joinRoom = async (roomCode, userId) => {
   const quizRoom = await QuizRoom.findOne({ roomCode });
   
   if (!quizRoom) {
-    throw new AppError('Room not found', HTTP_STATUS.NOT_FOUND);
+    throw new AppError('Quiz room not found. Please check the room code and try again.', HTTP_STATUS.NOT_FOUND, 'ROOM_NOT_FOUND');
   }
 
   // Check if room has ended
-  if (quizRoom.status === 'ended' || new Date() > quizRoom.endTime) {
-    throw new AppError('Room has ended', HTTP_STATUS.BAD_REQUEST);
+  const now = new Date();
+  if (quizRoom.status === 'ended' || now > quizRoom.endTime) {
+    throw new AppError('This quiz room has already ended. You cannot join it anymore.', HTTP_STATUS.BAD_REQUEST, 'ROOM_ENDED');
   }
 
   // Check if already joined
@@ -171,13 +174,12 @@ const joinRoom = async (roomCode, userId) => {
 
   // Check max participants
   if (quizRoom.participants.length >= quizRoom.settings.maxParticipants) {
-    throw new AppError('Room is full', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError(`This quiz room is full (${quizRoom.settings.maxParticipants} participants). Please try another room.`, HTTP_STATUS.BAD_REQUEST, 'ROOM_FULL');
   }
 
-  // Check if late join is allowed
-  const now = new Date();
+  // Check if late join is allowed (reuse 'now' from line 161)
   if (!quizRoom.settings.allowLateJoin && now > quizRoom.startTime && quizRoom.status === 'active') {
-    throw new AppError('Late join is not allowed for this room', HTTP_STATUS.BAD_REQUEST);
+    throw new AppError('Late joining is not allowed for this quiz room. Please join before the quiz starts.', HTTP_STATUS.BAD_REQUEST, 'LATE_JOIN_NOT_ALLOWED');
   }
 
   // Add participant
@@ -192,7 +194,7 @@ const joinRoom = async (roomCode, userId) => {
   // Broadcast participant update to all users in the room via socket
   try {
     const io = getSocketIO && typeof getSocketIO === 'function' ? getSocketIO() : null;
-    if (io) {
+    if (io && typeof io.to === 'function' && typeof io.emit === 'function') {
       // Populate participants before emitting
       const updatedRoom = await QuizRoom.findOne({ roomCode })
         .populate('participants.userId', 'name email profilePicture');
@@ -249,20 +251,37 @@ const getRoomDetails = async (roomCode) => {
 };
 
 /**
- * Get room leaderboard
+ * Get room leaderboard with pagination
  */
-const getRoomLeaderboard = async (roomId) => {
+const getRoomLeaderboard = async (roomId, page = 1, limit = 50) => {
+  const skip = (page - 1) * limit;
+  
+  // Get total count for pagination
+  const total = await QuizRoomAttempt.countDocuments({ roomId });
+  
+  // Get paginated leaderboard
   const leaderboard = await QuizRoomAttempt.find({ roomId })
     .populate('userId', 'name email profilePicture')
     .sort({ score: -1, timeTaken: 1 })
-    .limit(100);
+    .skip(skip)
+    .limit(limit);
 
-  // Add ranks
+  // Add ranks (based on overall position, not page position)
   leaderboard.forEach((attempt, index) => {
-    attempt.rank = index + 1;
+    attempt.rank = skip + index + 1;
   });
 
-  return leaderboard;
+  return {
+    leaderboard,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: skip + limit < total,
+      hasPrevPage: page > 1,
+    },
+  };
 };
 
 /**
@@ -333,9 +352,9 @@ const updateRoomStats = async (roomId) => {
 };
 
 /**
- * Get user's rooms (created or joined)
+ * Get user's rooms (created or joined) with pagination
  */
-const getUserRooms = async (userId, type = 'all') => {
+const getUserRooms = async (userId, type = 'all', page = 1, limit = 20) => {
   let query = {};
   
   if (type === 'created') {
@@ -351,29 +370,64 @@ const getUserRooms = async (userId, type = 'all') => {
     };
   }
 
+  const skip = (page - 1) * limit;
+  
+  // Get total count for pagination
+  const total = await QuizRoom.countDocuments(query);
+
   const rooms = await QuizRoom.find(query)
     .populate('hostId', 'name email')
     .populate('testId', 'testName')
     .sort({ createdAt: -1 })
-    .limit(50);
+    .skip(skip)
+    .limit(limit);
 
-  return rooms;
+  return {
+    rooms,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: skip + limit < total,
+      hasPrevPage: page > 1,
+    },
+  };
 };
 
 /**
- * Get active rooms (for discovery)
+ * Get active rooms (for discovery) with pagination
  */
-const getActiveRooms = async (limit = 20) => {
-  const rooms = await QuizRoom.find({
+const getActiveRooms = async (page = 1, limit = 20) => {
+  const skip = (page - 1) * limit;
+  const now = new Date();
+  
+  const query = {
     status: { $in: ['scheduled', 'active'] },
-    startTime: { $gte: new Date() },
-  })
+    startTime: { $gte: now },
+  };
+  
+  // Get total count for pagination
+  const total = await QuizRoom.countDocuments(query);
+
+  const rooms = await QuizRoom.find(query)
     .populate('hostId', 'name email')
     .populate('testId', 'testName')
     .sort({ startTime: 1 })
+    .skip(skip)
     .limit(limit);
 
-  return rooms;
+  return {
+    rooms,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      hasNextPage: skip + limit < total,
+      hasPrevPage: page > 1,
+    },
+  };
 };
 
 module.exports = {

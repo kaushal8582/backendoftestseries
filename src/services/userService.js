@@ -55,13 +55,21 @@ const updateProfile = async (userId, updateData) => {
  * @returns {Promise<Object>} - Test attempts with pagination
  */
 const getUserTestAttempts = async (userId, queryParams = {}) => {
-  const { page = 1, limit = 10, status } = queryParams;
+  const { page = 1, limit = 10, status, attemptType = 'normal' } = queryParams;
   const skip = (page - 1) * limit;
 
   const query = { userId };
   if (status) {
     query.status = status;
   }
+
+  // Filter by attempt type
+  if (attemptType === 'normal') {
+    query.quizRoomId = null; // Only normal attempts
+  } else if (attemptType === 'quiz') {
+    query.quizRoomId = { $ne: null }; // Only quiz attempts
+  }
+  // 'all' shows both (no filter on quizRoomId)
 
   const attempts = await TestAttempt.find(query)
     .populate({
@@ -104,6 +112,8 @@ const getUserPerformanceSummary = async (userId) => {
   // Get additional stats from test attempts
   // Count ALL completed attempts (including quiz room and daily challenge attempts)
   // This ensures consistency with leaderboard calculations
+  // Note: This includes both normal and quiz attempts for overall performance metrics
+  // To get separate stats, filter by quizRoomId: null (normal) or { $ne: null } (quiz)
   const completedAttempts = await TestAttempt.find({
     userId,
     status: 'completed',

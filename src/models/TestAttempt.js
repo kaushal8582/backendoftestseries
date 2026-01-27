@@ -170,6 +170,9 @@ testAttemptSchema.index({ examId: 1 });
 testAttemptSchema.index({ submittedAt: -1 });
 testAttemptSchema.index({ userId: 1, dailyChallengeId: 1 }); // For daily challenge attempts
 testAttemptSchema.index({ userId: 1, quizRoomId: 1 }); // For quiz room attempts
+// Compound indexes for efficient querying by attempt type
+testAttemptSchema.index({ userId: 1, testId: 1, quizRoomId: 1 }); // For filtering by attempt type
+testAttemptSchema.index({ userId: 1, testId: 1, quizRoomId: 1, status: 1 }); // For completion checks by type
 
 module.exports = mongoose.model('TestAttempt', testAttemptSchema);
 

@@ -89,17 +89,23 @@ const getRoomDetails = async (req, res, next) => {
 
 /**
  * @route   GET /api/quiz-rooms/:roomId/leaderboard
- * @desc    Get room leaderboard
+ * @desc    Get room leaderboard with pagination
  * @access  Private
  */
 const getLeaderboard = async (req, res, next) => {
   try {
     const { roomId } = req.params;
-    const leaderboard = await quizRoomService.getRoomLeaderboard(roomId);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    
+    const result = await quizRoomService.getRoomLeaderboard(roomId, page, limit);
     
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: { leaderboard },
+      data: {
+        leaderboard: result.leaderboard,
+        pagination: result.pagination,
+      },
     });
   } catch (error) {
     next(error);
@@ -241,17 +247,23 @@ const getRoomQuestions = async (req, res, next) => {
 
 /**
  * @route   GET /api/quiz-rooms/user/rooms
- * @desc    Get user's rooms (created or joined)
+ * @desc    Get user's rooms (created or joined) with pagination
  * @access  Private
  */
 const getUserRooms = async (req, res, next) => {
   try {
     const { type } = req.query; // 'all', 'created', 'joined'
-    const rooms = await quizRoomService.getUserRooms(req.user._id, type || 'all');
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    
+    const result = await quizRoomService.getUserRooms(req.user._id, type || 'all', page, limit);
     
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: { rooms },
+      data: {
+        rooms: result.rooms,
+        pagination: result.pagination,
+      },
     });
   } catch (error) {
     next(error);
@@ -260,17 +272,22 @@ const getUserRooms = async (req, res, next) => {
 
 /**
  * @route   GET /api/quiz-rooms/active/list
- * @desc    Get active rooms (for discovery)
+ * @desc    Get active rooms (for discovery) with pagination
  * @access  Private
  */
 const getActiveRooms = async (req, res, next) => {
   try {
-    const { limit } = req.query;
-    const rooms = await quizRoomService.getActiveRooms(limit ? parseInt(limit) : 20);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    
+    const result = await quizRoomService.getActiveRooms(page, limit);
     
     res.status(HTTP_STATUS.OK).json({
       success: true,
-      data: { rooms },
+      data: {
+        rooms: result.rooms,
+        pagination: result.pagination,
+      },
     });
   } catch (error) {
     next(error);

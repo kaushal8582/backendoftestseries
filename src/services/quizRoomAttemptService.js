@@ -38,7 +38,7 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
     throw new AppError(statusMessage, HTTP_STATUS.BAD_REQUEST);
   }
 
-  // Check if user already has an attempt for this room
+  // Check if user already has an attempt for this room (atomic check)
   let existingRoomAttempt = await QuizRoomAttempt.findOne({
     roomId: quizRoom._id,
     userId,
@@ -56,7 +56,9 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
     return existingRoomAttempt;
   }
 
-  let testAttempt;
+  // Prepare test attempt creation (but don't create yet)
+  let testAttemptData;
+  let testAttemptId;
 
   if (quizRoom.roomType === 'platform_test') {
     // For quiz rooms, create a new test attempt regardless of platform test completion
@@ -89,41 +91,108 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
       // This is allowed
     }
     
-    // Create a new test attempt for quiz room
-    testAttempt = await createTestAttemptForRoom(userId, quizRoom.testId._id);
+    // Store test attempt creation function instead of creating immediately
+    testAttemptData = { type: 'platform_test', testId: quizRoom.testId._id };
   } else {
-    // Create a virtual test attempt for custom questions
-    // We'll create a TestAttempt-like structure but store answers differently
-    try {
-      testAttempt = await createCustomTestAttempt(userId, quizRoom);
-    } catch (customError) {
-      throw new AppError(`Failed to initialize custom quiz: ${customError.message || 'Unable to load questions for this quiz.'}`, HTTP_STATUS.BAD_REQUEST);
-    }
+    // Store custom quiz data
+    testAttemptData = { type: 'custom', quizRoom };
   }
 
-  // Create quiz room attempt - handle duplicate key error gracefully (race condition)
+  // Use atomic findOneAndUpdate with upsert to prevent race conditions
+  // This ensures only one QuizRoomAttempt is created even with concurrent requests
+  let quizRoomAttempt;
+  let testAttempt;
+  let isNewAttempt = false;
+
   try {
-    const quizRoomAttempt = await QuizRoomAttempt.create({
-      roomId: quizRoom._id,
-      userId,
-      attemptId: testAttempt._id,
-      totalMarks: quizRoom.totalMarks,
-    });
+    // First, try to atomically create or get the QuizRoomAttempt
+    // We'll create a placeholder and then update it with the actual testAttempt
+    quizRoomAttempt = await QuizRoomAttempt.findOneAndUpdate(
+      {
+        roomId: quizRoom._id,
+        userId,
+      },
+      {
+        $setOnInsert: {
+          totalMarks: quizRoom.totalMarks,
+          joinedAt: new Date(),
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+      }
+    );
 
-    // Update test attempt with quizRoomId to mark it as a quiz room attempt
-    testAttempt.quizRoomId = quizRoom._id;
-    await testAttempt.save();
+    // Check if this is a newly created attempt (no attemptId means it was just created)
+    if (!quizRoomAttempt.attemptId) {
+      isNewAttempt = true;
+      
+      // Now create the test attempt
+      if (testAttemptData.type === 'platform_test') {
+        testAttempt = await createTestAttemptForRoom(userId, testAttemptData.testId);
+      } else {
+        try {
+          testAttempt = await createCustomTestAttempt(userId, testAttemptData.quizRoom);
+        } catch (customError) {
+          // If test attempt creation fails, delete the QuizRoomAttempt we just created
+          await QuizRoomAttempt.findByIdAndDelete(quizRoomAttempt._id);
+          throw new AppError(`Failed to initialize custom quiz: ${customError.message || 'Unable to load questions for this quiz.'}`, HTTP_STATUS.BAD_REQUEST);
+        }
+      }
 
-    // Update participant with attemptId
-    participant.attemptId = testAttempt._id;
-    await quizRoom.save();
+      // Update the QuizRoomAttempt with the testAttemptId atomically
+      quizRoomAttempt.attemptId = testAttempt._id;
+      await quizRoomAttempt.save();
+
+      // Update test attempt with quizRoomId to mark it as a quiz room attempt
+      testAttempt.quizRoomId = quizRoom._id;
+      await testAttempt.save();
+
+      // Update participant with attemptId
+      participant.attemptId = testAttempt._id;
+      await quizRoom.save();
+    } else {
+      // Existing attempt was found (race condition - another request created it)
+      // Fetch the associated test attempt
+      testAttempt = await TestAttempt.findById(quizRoomAttempt.attemptId);
+      if (testAttempt && testAttempt.status === 'completed') {
+        // User already completed, return the existing attempt
+        return quizRoomAttempt;
+      }
+      // If existing attempt is in-progress, return it to continue
+      // Ensure participant has the attemptId
+      if (!participant.attemptId) {
+        participant.attemptId = quizRoomAttempt.attemptId;
+        await quizRoom.save();
+      }
+    }
 
     return quizRoomAttempt;
   } catch (error) {
-    // Handle duplicate key error (race condition - another request created the attempt)
+    // If we created a new attempt but something failed, clean up
+    if (isNewAttempt && quizRoomAttempt && !quizRoomAttempt.attemptId) {
+      try {
+        await QuizRoomAttempt.findByIdAndDelete(quizRoomAttempt._id);
+      } catch (cleanupError) {
+        console.error('Error cleaning up orphaned QuizRoomAttempt:', cleanupError);
+      }
+    }
+    
+    // If testAttempt was created but QuizRoomAttempt creation failed, clean up testAttempt
+    if (isNewAttempt && testAttempt && !testAttempt.quizRoomId) {
+      try {
+        await TestAttempt.findByIdAndDelete(testAttempt._id);
+      } catch (cleanupError) {
+        console.error('Error cleaning up orphaned TestAttempt:', cleanupError);
+      }
+    }
+
+    // Handle duplicate key error (shouldn't happen with findOneAndUpdate, but just in case)
     if (error.code === 11000 || error.message?.includes('duplicate key')) {
       // Fetch the existing attempt that was created by another request
-      existingRoomAttempt = await QuizRoomAttempt.findOne({
+      const existingRoomAttempt = await QuizRoomAttempt.findOne({
         roomId: quizRoom._id,
         userId,
       });
@@ -144,6 +213,7 @@ const startQuizRoomAttempt = async (roomCode, userId) => {
         return existingRoomAttempt;
       }
     }
+    
     // Re-throw if it's a different error
     throw error;
   }
@@ -290,7 +360,7 @@ const submitAnswer = async (roomCode, userId, questionId, selectedOption, timeSp
   });
 
   if (!quizRoomAttempt) {
-    throw new AppError('Attempt not found. Please start the quiz first.', HTTP_STATUS.NOT_FOUND);
+    throw new AppError('Quiz attempt not found. Please start the quiz first.', HTTP_STATUS.NOT_FOUND, 'ATTEMPT_NOT_FOUND');
   }
 
   // Get question (either from Test or CustomQuestion)
@@ -303,7 +373,7 @@ const submitAnswer = async (roomCode, userId, questionId, selectedOption, timeSp
   }
 
   if (!question) {
-    throw new AppError('Question not found', HTTP_STATUS.NOT_FOUND);
+    throw new AppError('Question not found. The question may have been removed.', HTTP_STATUS.NOT_FOUND, 'QUESTION_NOT_FOUND');
   }
 
   // Update test attempt answer
@@ -313,7 +383,7 @@ const submitAnswer = async (roomCode, userId, questionId, selectedOption, timeSp
   );
 
   if (answerIndex === -1) {
-    throw new AppError('Question not found in attempt', HTTP_STATUS.NOT_FOUND);
+    throw new AppError('Question not found in your attempt. Please refresh and try again.', HTTP_STATUS.NOT_FOUND, 'QUESTION_NOT_IN_ATTEMPT');
   }
 
   const isCorrect = question.correctOption === selectedOption;
