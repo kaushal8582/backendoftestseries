@@ -98,10 +98,15 @@ const getMyRankHandler = async (req, res, next) => {
 const getDailyChallengeLeaderboardHandler = async (req, res, next) => {
   try {
     const { challengeId, limit = 50, offset = 0 } = req.query;
-    const leaderboard = await getDailyChallengeLeaderboard(challengeId || null, {
-      limit: parseInt(limit),
-      offset: parseInt(offset),
-    });
+    const userId = req.user?._id || null; // Get current user ID for rank calculation
+    const leaderboard = await getDailyChallengeLeaderboard(
+      challengeId || null,
+      {
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+      },
+      userId
+    );
     res.status(HTTP_STATUS.OK).json({
       success: true,
       data: leaderboard,

@@ -80,6 +80,30 @@ const startTest = async (userId, testId, dailyChallengeId = null) => {
     throw new AppError('Test not found', HTTP_STATUS.NOT_FOUND);
   }
 
+  // If this is a daily challenge, verify it's still valid (not expired)
+  if (dailyChallengeId) {
+    const DailyChallenge = require('../models/DailyChallenge');
+    const challenge = await DailyChallenge.findById(dailyChallengeId);
+    
+    if (!challenge) {
+      throw new AppError('Daily challenge not found', HTTP_STATUS.NOT_FOUND);
+    }
+
+    if (!challenge.isActive) {
+      throw new AppError('This daily challenge is no longer active', HTTP_STATUS.BAD_REQUEST);
+    }
+
+    // Check if challenge date is today (handle timezone by comparing dates, not times)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const challengeDate = new Date(challenge.date);
+    challengeDate.setHours(0, 0, 0, 0);
+
+    if (challengeDate.getTime() !== today.getTime()) {
+      throw new AppError('This daily challenge has expired. New challenges are available daily.', HTTP_STATUS.BAD_REQUEST);
+    }
+  }
+
   // Check if user already has an in-progress attempt
   const existingAttemptQuery = {
     userId,
@@ -104,8 +128,10 @@ const startTest = async (userId, testId, dailyChallengeId = null) => {
   }
 
   // Check if user already completed this test
-  // For Daily Challenge, check only daily challenge attempts
-  // For normal test, check only normal attempts (exclude daily challenge attempts)
+  // IMPORTANT: For Daily Challenge, we ONLY check daily challenge attempts
+  // This allows users to retake tests for daily challenges even if they completed it normally
+  // Daily challenges are separate attempts with separate leaderboards
+  // For normal test, we exclude daily challenge attempts and quiz attempts
   const completedAttemptQuery = {
     userId,
     testId,
@@ -113,11 +139,14 @@ const startTest = async (userId, testId, dailyChallengeId = null) => {
   };
 
   if (dailyChallengeId) {
-    // For daily challenge, check if user completed this specific daily challenge
+    // For daily challenge, check ONLY if user completed THIS specific daily challenge
+    // This query will NOT find normal test attempts (dailyChallengeId = null)
+    // So users can retake for daily challenge even if they completed test normally
     completedAttemptQuery.dailyChallengeId = dailyChallengeId;
     completedAttemptQuery.quizRoomId = null; // Exclude quiz attempts for daily challenges
   } else {
     // For normal test, exclude daily challenge attempts and quiz attempts
+    // This ensures normal and daily challenge attempts are completely separate
     completedAttemptQuery.dailyChallengeId = null;
     completedAttemptQuery.quizRoomId = null;
   }

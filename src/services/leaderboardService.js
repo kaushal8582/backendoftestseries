@@ -482,7 +482,7 @@ const getUserRank = async (userId, type = 'global') => {
  * @param {Object} options - Query options
  * @returns {Promise<Object>} - Leaderboard data
  */
-const getDailyChallengeLeaderboard = async (challengeId = null, options = {}) => {
+const getDailyChallengeLeaderboard = async (challengeId = null, options = {}, userId = null) => {
   const { limit = 50, offset = 0 } = options;
   const DailyChallenge = require('../models/DailyChallenge');
   const UserChallenge = require('../models/UserChallenge');
@@ -598,6 +598,45 @@ const getDailyChallengeLeaderboard = async (challengeId = null, options = {}) =>
     isCompleted: true,
   });
 
+  // Calculate user's rank if userId is provided
+  let userRankData = null;
+  if (userId) {
+    const userChallenge = await UserChallenge.findOne({
+      userId,
+      challengeId: challenge._id,
+      isCompleted: true,
+    });
+
+    if (userChallenge) {
+      // Get user's attempt
+      const userAttempt = await TestAttempt.findOne({
+        userId,
+        testId: challenge.targetTest,
+        dailyChallengeId: challenge._id,
+        status: 'completed',
+      })
+        .sort({ score: -1, accuracy: -1, timeTaken: 1 })
+        .lean();
+
+      if (userAttempt) {
+        // Find user's rank in sorted leaderboard
+        const userRank = leaderboard.findIndex(
+          (entry) => entry.userId.toString() === userId.toString()
+        );
+        
+        userRankData = {
+          rank: userRank >= 0 ? userRank + offset + 1 : null,
+          totalParticipants: total,
+          percentile: total > 0 ? Math.round(((total - (userRank >= 0 ? userRank + offset : total)) / total) * 100) : 0,
+          score: userAttempt.score || 0,
+          totalMarks: userAttempt.totalMarks || 0,
+          accuracy: userAttempt.accuracy || 0,
+          timeTaken: userAttempt.timeTaken || 0,
+        };
+      }
+    }
+  }
+
   return {
     leaderboard,
     pagination: {
@@ -612,6 +651,7 @@ const getDailyChallengeLeaderboard = async (challengeId = null, options = {}) =>
       date: challenge.date,
       targetTest: challenge.targetTest,
     },
+    userRankData, // Include user's rank data if userId provided
   };
 };
 
